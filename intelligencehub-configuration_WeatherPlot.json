@@ -1,0 +1,1196 @@
+{
+  "productInfo" : {
+    "company" : "HighByte",
+    "product" : "IntelligenceHub",
+    "version" : "4.4.1",
+    "build" : "2026.4.14.7",
+    "stage" : "Release"
+  },
+  "project" : {
+    "version" : 13,
+    "connections" : [ {
+      "name" : "Weather_MQTT",
+      "uri" : "mqtt://localhost:1885",
+      "tags" : [ "Weather" ],
+      "writes" : {
+        "flattenModeledValues" : false
+      },
+      "writeThrottle" : {
+        "enabled" : false,
+        "maxBatchSizePerTarget" : 1000,
+        "batchDelay" : {
+          "duration" : 20,
+          "units" : "Milliseconds"
+        }
+      },
+      "subscriptions" : { },
+      "storeForward" : {
+        "enabled" : false,
+        "maxEntries" : 100,
+        "waitOnFailureInterval" : {
+          "duration" : 1,
+          "units" : "Seconds"
+        }
+      },
+      "settings" : {
+        "connectionTimeoutSeconds" : 10,
+        "keepAliveSeconds" : 60,
+        "requestTimeoutMS" : 5000,
+        "cleanSession" : true,
+        "ssl" : false,
+        "redundantBrokers" : [ ],
+        "maxInflight" : 1000,
+        "inputDiscovery" : "#",
+        "mcpEnabled" : "enabled"
+      }
+    }, {
+      "name" : "Weather_RestAPI",
+      "uri" : "rest.client://Weather",
+      "tags" : [ "Weather" ],
+      "writes" : {
+        "flattenModeledValues" : false
+      },
+      "writeThrottle" : {
+        "enabled" : false,
+        "maxBatchSizePerTarget" : 1000,
+        "batchDelay" : {
+          "duration" : 20,
+          "units" : "Milliseconds"
+        }
+      },
+      "subscriptions" : { },
+      "storeForward" : {
+        "enabled" : false,
+        "maxEntries" : 100,
+        "waitOnFailureInterval" : {
+          "duration" : 1,
+          "units" : "Seconds"
+        }
+      },
+      "settings" : {
+        "authentication" : {
+          "type" : "None",
+          "options" : { }
+        },
+        "baseURL" : "https://api.weather.gov/"
+      }
+    } ],
+    "inputs" : [ {
+      "name" : "Forecast",
+      "connection" : "Weather_MQTT",
+      "type" : "mqtt",
+      "qualifier" : {
+        "payloadType" : "json",
+        "qos" : 0,
+        "topic" : "Weather/{{this.Location}}",
+        "inputType" : "LastPublish",
+        "includeTopic" : false,
+        "type" : "Tag"
+      },
+      "cacheLifetime" : {
+        "enabled" : false
+      },
+      "template" : {
+        "type" : "Off"
+      },
+      "parameters" : {
+        "type" : "inline",
+        "model" : {
+          "name" : "params",
+          "tags" : [ ],
+          "attributes" : [ {
+            "attributeType" : "Internal",
+            "name" : "Location",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "internalType" : "String"
+          } ]
+        }
+      }
+    }, {
+      "name" : "ForecastURL",
+      "connection" : "Weather_RestAPI",
+      "type" : "rest.client",
+      "qualifier" : {
+        "acceptType" : "*/*",
+        "method" : "GET",
+        "contentType" : "application/json",
+        "includeMetadata" : false,
+        "endpointURL" : "/points/{{this.Lat}},{{this.Long}}",
+        "isFile" : false,
+        "type" : "Tag"
+      },
+      "cacheLifetime" : {
+        "enabled" : false
+      },
+      "template" : {
+        "type" : "Off"
+      },
+      "parameters" : {
+        "type" : "inline",
+        "model" : {
+          "name" : "params",
+          "tags" : [ ],
+          "attributes" : [ {
+            "attributeType" : "Internal",
+            "name" : "Long",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "defaultValue" : "{{this.Long}}",
+            "internalType" : "String"
+          }, {
+            "attributeType" : "Internal",
+            "name" : "Lat",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "defaultValue" : "{{this.Lat}}",
+            "internalType" : "String"
+          } ]
+        }
+      }
+    }, {
+      "name" : "HourlyForecast",
+      "connection" : "Weather_RestAPI",
+      "type" : "rest.client",
+      "qualifier" : {
+        "acceptType" : "*/*",
+        "method" : "GET",
+        "contentType" : "application/json",
+        "includeMetadata" : false,
+        "isFile" : false,
+        "endpointURL" : "/gridpoints/{{this.gridId}}/{{this.gridX}},{{this.gridY}}/forecast/hourly",
+        "type" : "Tag"
+      },
+      "cacheLifetime" : {
+        "enabled" : false
+      },
+      "template" : {
+        "type" : "Off"
+      },
+      "parameters" : {
+        "type" : "inline",
+        "model" : {
+          "name" : "params",
+          "tags" : [ ],
+          "attributes" : [ {
+            "attributeType" : "Internal",
+            "name" : "gridX",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "defaultValue" : "{{this.gridX}}",
+            "internalType" : "String"
+          }, {
+            "attributeType" : "Internal",
+            "name" : "gridY",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "defaultValue" : "{{this.gridY}}",
+            "internalType" : "String"
+          }, {
+            "attributeType" : "Internal",
+            "name" : "gridId",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "defaultValue" : "{{this.gridId}}",
+            "internalType" : "String"
+          } ]
+        }
+      }
+    } ],
+    "outputs" : [ ],
+    "modeling" : {
+      "models" : [ {
+        "name" : "Position",
+        "tags" : [ "Weather" ],
+        "attributes" : [ {
+          "attributeType" : "Internal",
+          "name" : "Latitude",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : "Any"
+        }, {
+          "attributeType" : "Internal",
+          "name" : "Longitude",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : "Any"
+        } ]
+      }, {
+        "name" : "Weather",
+        "tags" : [ "Weather" ],
+        "attributes" : [ {
+          "attributeType" : "Modeled",
+          "name" : "CurrentWeather",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "model" : "WeatherPeriod"
+        }, {
+          "attributeType" : "Modeled",
+          "name" : "WeatherForecast",
+          "nullable" : false,
+          "required" : false,
+          "array" : true,
+          "model" : "WeatherPeriod"
+        } ]
+      }, {
+        "name" : "WeatherPeriod",
+        "tags" : [ "Weather" ],
+        "attributes" : [ {
+          "attributeType" : "Internal",
+          "name" : "Time",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : "Any"
+        }, {
+          "attributeType" : "Internal",
+          "name" : "Temperature",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : "Any"
+        }, {
+          "attributeType" : "Internal",
+          "name" : "WindSpeed",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : "Any"
+        }, {
+          "attributeType" : "Internal",
+          "name" : "WindDirection",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : "Any"
+        }, {
+          "attributeType" : "Internal",
+          "name" : "Forecast",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : "Any"
+        } ]
+      } ],
+      "instances" : [ {
+        "name" : "Position_Instance",
+        "tags" : [ "Weather" ],
+        "model" : "Position",
+        "rootValueAs" : "Object",
+        "template" : {
+          "type" : "Off"
+        },
+        "executeMode" : "V4",
+        "initExpression" : "",
+        "attributes" : [ {
+          "name" : "Latitude",
+          "expression" : {
+            "type" : "JavaScript",
+            "expression" : "return {{this.Latitude}};"
+          }
+        }, {
+          "name" : "Longitude",
+          "expression" : {
+            "type" : "JavaScript",
+            "expression" : "return {{this.Longitude}};"
+          }
+        } ],
+        "parameters" : {
+          "type" : "inline",
+          "model" : {
+            "name" : "params",
+            "tags" : [ ],
+            "attributes" : [ {
+              "attributeType" : "Internal",
+              "name" : "Latitude",
+              "nullable" : false,
+              "required" : false,
+              "array" : false,
+              "internalType" : "String"
+            }, {
+              "attributeType" : "Internal",
+              "name" : "Longitude",
+              "nullable" : false,
+              "required" : false,
+              "array" : false,
+              "internalType" : "String"
+            } ]
+          }
+        }
+      } ]
+    },
+    "conditions" : [ ],
+    "functions" : [ ],
+    "tags" : [ {
+      "name" : "Weather"
+    } ],
+    "pipelines" : [ {
+      "name" : "GetForecastForLocation",
+      "tags" : [ "Weather" ],
+      "inputStages" : [ "SmartQuery" ],
+      "stages" : [ {
+        "name" : "SmartQuery",
+        "display" : {
+          "position" : {
+            "x" : 240,
+            "y" : 0
+          }
+        },
+        "description" : "Queries the Weather namespace for forecast data based on the Location parameter passed in from the API trigger. Results are returned as a flat list.",
+        "config" : {
+          "type" : ".SmartQueryConfig",
+          "query" : {
+            "from" : [ "Weather.{{event.value.Location}}.Forecast" ],
+            "where" : "",
+            "select" : {
+              "what" : [ "value" ],
+              "as" : "List",
+              "delim" : "."
+            }
+          },
+          "breakup" : false
+        },
+        "outputs" : [ "Return" ]
+      }, {
+        "name" : "Return",
+        "display" : {
+          "position" : {
+            "x" : 736,
+            "y" : -3
+          }
+        },
+        "description" : "Returns the forecast query results to the API caller.",
+        "config" : {
+          "type" : ".ReturnConfig"
+        },
+        "outputs" : [ ]
+      } ],
+      "trackActivity" : true,
+      "triggers" : [ {
+        "name" : "APITrigger",
+        "display" : {
+          "position" : {
+            "x" : -450,
+            "y" : 0
+          }
+        },
+        "description" : "Exposes the pipeline as an API endpoint. Accepts a Location string parameter to determine which weather forecast data to retrieve.",
+        "config" : {
+          "type" : ".TriggerApi",
+          "enabled" : true,
+          "parameters" : {
+            "type" : "inline",
+            "model" : {
+              "name" : "params",
+              "tags" : [ ],
+              "attributes" : [ {
+                "attributeType" : "Internal",
+                "name" : "Location",
+                "nullable" : false,
+                "required" : false,
+                "array" : false,
+                "internalType" : "String"
+              } ]
+            }
+          }
+        }
+      } ],
+      "errorHandler" : {
+        "type" : "default"
+      }
+    }, {
+      "name" : "GetHourlyForecast",
+      "tags" : [ "Weather" ],
+      "inputStages" : [ "SmartQuery" ],
+      "stages" : [ {
+        "name" : "ReadURL",
+        "display" : {
+          "position" : {
+            "x" : 1140,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".ReadConfig",
+          "failureOutputs" : [ ],
+          "reference" : {
+            "type" : "Input",
+            "name" : "ForecastURL",
+            "path" : "",
+            "params" : {
+              "Long" : "{{event.value.Position.Longitude}}",
+              "Lat" : "{{event.value.Position.Latitude}}"
+            },
+            "connectionName" : "Weather_RestAPI"
+          }
+        },
+        "outputs" : [ "Grids" ]
+      }, {
+        "name" : "Weather_MQTT",
+        "display" : {
+          "position" : {
+            "x" : 5894,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".DynamicWriteConfig",
+          "failureOutputs" : [ ],
+          "connectionReference" : "{{Connection.Weather_MQTT}}",
+          "qualifier" : {
+            "qos" : 0,
+            "namedRoot" : false,
+            "retained" : true,
+            "breakupArrays" : false,
+            "topic" : "{{event.metadata.breakupPath}}",
+            "filterList" : [ "_model", "_timestamp" ]
+          },
+          "qualifierExpression" : "",
+          "writeReturn" : "completion"
+        },
+        "outputs" : [ ]
+      }, {
+        "name" : "PeriodsToTop",
+        "display" : {
+          "position" : {
+            "x" : 3840,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".JavaScriptTransformConfig",
+          "transformExpression" : "stage.setValue(event.metadata.Periods.properties.periods);"
+        },
+        "outputs" : [ "ForEach" ]
+      }, {
+        "name" : "Properties",
+        "display" : {
+          "position" : {
+            "x" : 2490,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".AttributeFilterConfig",
+          "filterOption" : "exclude",
+          "filterList" : [ {
+            "filterType" : "exactPathFilter",
+            "filterText" : "properties.periods"
+          } ],
+          "retainAsMetadata" : true,
+          "metadataKey" : "Periods"
+        },
+        "outputs" : [ "ModelCurrentWeather" ]
+      }, {
+        "name" : "ModelCurrentWeather",
+        "display" : {
+          "position" : {
+            "x" : 2940,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".ModelConfig",
+          "model" : "WeatherPeriod",
+          "objectName" : "",
+          "initExpression" : "",
+          "attributes" : [ {
+            "name" : "Time",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.metadata.Periods.properties.periods[0].startTime;"
+            }
+          }, {
+            "name" : "Temperature",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.metadata.Periods.properties.periods[0].temperature;"
+            }
+          }, {
+            "name" : "WindSpeed",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.metadata.Periods.properties.periods[0].windSpeed;"
+            }
+          }, {
+            "name" : "WindDirection",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.metadata.Periods.properties.periods[0].windDirection;"
+            }
+          }, {
+            "name" : "Forecast",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.metadata.Periods.properties.periods[0].shortForecast;"
+            }
+          } ]
+        },
+        "outputs" : [ "CurrentWeather" ]
+      }, {
+        "name" : "Weather",
+        "display" : {
+          "position" : {
+            "x" : 5440,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".ModelConfig",
+          "model" : "Weather",
+          "objectName" : "",
+          "initExpression" : "",
+          "attributes" : [ {
+            "name" : "CurrentWeather",
+            "expression" : {
+              "type" : "PipelineStageReference",
+              "stageReference" : "event.metadata.CurrentWeather"
+            },
+            "attributes" : [ {
+              "name" : "Time",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            }, {
+              "name" : "Temperature",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            }, {
+              "name" : "WindSpeed",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            }, {
+              "name" : "WindDirection",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            }, {
+              "name" : "Forecast",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            } ]
+          }, {
+            "name" : "WeatherForecast",
+            "expression" : {
+              "type" : "PipelineStageReference",
+              "stageReference" : "event.value"
+            },
+            "attributes" : [ {
+              "name" : "Time",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            }, {
+              "name" : "Temperature",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            }, {
+              "name" : "WindSpeed",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            }, {
+              "name" : "WindDirection",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            }, {
+              "name" : "Forecast",
+              "expression" : {
+                "type" : "PipelineStageReference",
+                "stageReference" : ""
+              }
+            } ]
+          } ]
+        },
+        "outputs" : [ "Weather_MQTT" ]
+      }, {
+        "name" : "ForEach",
+        "display" : {
+          "position" : {
+            "x" : 4290,
+            "y" : -105
+          },
+          "size" : {
+            "width" : 1000,
+            "height" : 300
+          },
+          "metadata" : { }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".ForEachLoopConfig",
+          "failureOutputs" : [ ],
+          "loopOutputs" : [ "ModelWeatherForcast" ],
+          "stageTimeout" : {
+            "duration" : 30,
+            "units" : "Seconds"
+          }
+        },
+        "outputs" : [ "Weather" ]
+      }, {
+        "name" : "Locations",
+        "display" : {
+          "position" : {
+            "x" : 690,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".BreakupConfig",
+          "breakupType" : "object",
+          "depth" : 2
+        },
+        "outputs" : [ "ReadURL" ]
+      }, {
+        "name" : "ReadForecast",
+        "display" : {
+          "position" : {
+            "x" : 2040,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".ReadConfig",
+          "failureOutputs" : [ ],
+          "reference" : {
+            "type" : "Input",
+            "name" : "HourlyForecast",
+            "path" : "",
+            "params" : {
+              "gridX" : "{{event.value.properties.gridX}}",
+              "gridY" : "{{event.value.properties.gridY}}",
+              "gridId" : "{{event.value.properties.gridId}}"
+            },
+            "connectionName" : "Weather_RestAPI"
+          }
+        },
+        "outputs" : [ "Properties" ]
+      }, {
+        "name" : "SmartQuery",
+        "display" : {
+          "position" : {
+            "x" : 240,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".SmartQueryConfig",
+          "query" : {
+            "from" : [ "Weather.*.Position.**" ],
+            "where" : "",
+            "select" : {
+              "what" : [ "value", "path", "name", "model", "timestamp" ],
+              "as" : "Hierarchy",
+              "delim" : "\\"
+            }
+          },
+          "breakup" : false
+        },
+        "outputs" : [ "Locations" ]
+      }, {
+        "name" : "Grids",
+        "display" : {
+          "position" : {
+            "x" : 1590,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".AttributeFilterConfig",
+          "filterOption" : "include",
+          "filterList" : [ {
+            "filterType" : "exactPathFilter",
+            "filterText" : "properties.gridId"
+          }, {
+            "filterType" : "exactPathFilter",
+            "filterText" : "properties.gridX"
+          }, {
+            "filterType" : "exactPathFilter",
+            "filterText" : "properties.gridY"
+          } ],
+          "retainAsMetadata" : false,
+          "metadataKey" : "filtered"
+        },
+        "outputs" : [ "ReadForecast" ]
+      }, {
+        "name" : "CurrentWeather",
+        "display" : {
+          "position" : {
+            "x" : 3390,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".AttributeFilterConfig",
+          "filterOption" : "exclude",
+          "filterList" : [ {
+            "filterType" : "exactPathFilter",
+            "filterText" : "Time"
+          }, {
+            "filterType" : "exactPathFilter",
+            "filterText" : "Temperature"
+          }, {
+            "filterType" : "exactPathFilter",
+            "filterText" : "WindSpeed"
+          }, {
+            "filterType" : "exactPathFilter",
+            "filterText" : "WindDirection"
+          }, {
+            "filterType" : "exactPathFilter",
+            "filterText" : "Forecast"
+          } ],
+          "retainAsMetadata" : true,
+          "metadataKey" : "CurrentWeather"
+        },
+        "outputs" : [ "PeriodsToTop" ]
+      }, {
+        "name" : "ModelWeatherForcast",
+        "display" : {
+          "position" : {
+            "x" : 200,
+            "y" : 105
+          },
+          "metadata" : {
+            "parent" : "ForEach"
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".ModelConfig",
+          "model" : "WeatherPeriod",
+          "objectName" : "",
+          "initExpression" : "",
+          "attributes" : [ {
+            "name" : "Time",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.value.startTime;"
+            }
+          }, {
+            "name" : "Temperature",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.value.temperature;"
+            }
+          }, {
+            "name" : "WindSpeed",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.value.windSpeed;"
+            }
+          }, {
+            "name" : "WindDirection",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.value.windDirection;"
+            }
+          }, {
+            "name" : "Forecast",
+            "expression" : {
+              "type" : "JavaScript",
+              "expression" : "return event.value.shortForecast;"
+            }
+          } ]
+        },
+        "outputs" : [ "Return" ]
+      }, {
+        "name" : "Return",
+        "display" : {
+          "position" : {
+            "x" : 650,
+            "y" : 105
+          },
+          "metadata" : {
+            "parent" : "ForEach"
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".ReturnConfig"
+        },
+        "outputs" : [ ]
+      } ],
+      "trackActivity" : true,
+      "triggers" : [ {
+        "name" : "CronTrigger",
+        "display" : {
+          "position" : {
+            "x" : -450,
+            "y" : 0
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".TriggerCron",
+          "enabled" : true,
+          "logging" : "on",
+          "schedule" : "15 * * * *",
+          "timezone" : "local"
+        }
+      }, {
+        "name" : "PolledTrigger",
+        "display" : {
+          "position" : {
+            "x" : -419,
+            "y" : 172
+          }
+        },
+        "description" : "",
+        "config" : {
+          "type" : ".TriggerPolled",
+          "enabled" : true,
+          "interval" : {
+            "duration" : 1,
+            "units" : "Days"
+          },
+          "mode" : "interval"
+        }
+      } ],
+      "errorHandler" : {
+        "type" : "default"
+      }
+    }, {
+      "name" : "GetLocations",
+      "tags" : [ "Weather" ],
+      "inputStages" : [ "SmartQuery" ],
+      "stages" : [ {
+        "name" : "SmartQuery",
+        "display" : {
+          "position" : {
+            "x" : 240,
+            "y" : 0
+          }
+        },
+        "description" : "Queries the namespace for all paths matching Weather.*.Position and returns them as a flat list.",
+        "config" : {
+          "type" : ".SmartQueryConfig",
+          "query" : {
+            "from" : [ "Weather.*.Position" ],
+            "where" : "",
+            "select" : {
+              "what" : [ "path" ],
+              "as" : "List",
+              "delim" : "."
+            }
+          },
+          "breakup" : false
+        },
+        "outputs" : [ "GetLocation" ]
+      }, {
+        "name" : "GetLocation",
+        "display" : {
+          "position" : {
+            "x" : 690,
+            "y" : 0
+          }
+        },
+        "description" : "Transforms each path by extracting the second segment as the Location using a JSONata expression.",
+        "config" : {
+          "type" : ".JSONataTransformConfig",
+          "transformExpression" : "event.value.{\r\n    \"Location\": $split(_path, \".\")[1]\r\n}"
+        },
+        "outputs" : [ "Return" ]
+      }, {
+        "name" : "Return",
+        "display" : {
+          "position" : {
+            "x" : 1140,
+            "y" : 0
+          }
+        },
+        "description" : "Returns the transformed location data to the API caller.",
+        "config" : {
+          "type" : ".ReturnConfig"
+        },
+        "outputs" : [ ]
+      } ],
+      "trackActivity" : true,
+      "triggers" : [ {
+        "name" : "APITrigger",
+        "display" : {
+          "position" : {
+            "x" : -450,
+            "y" : 0
+          }
+        },
+        "description" : "Exposes the pipeline as an API endpoint that can be called externally to retrieve weather locations.",
+        "config" : {
+          "type" : ".TriggerApi",
+          "enabled" : true,
+          "parameters" : {
+            "type" : "EmptyParameters"
+          }
+        }
+      } ],
+      "errorHandler" : {
+        "type" : "default"
+      }
+    } ],
+    "namespace" : [ {
+      "type" : "local",
+      "id" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "name" : "Weather",
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "5f79adce-1cdb-4518-88fd-f1b47103c255",
+      "name" : "Boston",
+      "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "e12f7aa6-f363-4716-96ce-4de4c47b9882",
+      "name" : "Position",
+      "parentNamespaceId" : "5f79adce-1cdb-4518-88fd-f1b47103c255",
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Position_Instance",
+        "path" : "",
+        "params" : {
+          "Latitude" : "42.3602",
+          "Longitude" : "-71.055"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "455f5cb7-3f36-400c-9cf0-cca38db23a77",
+      "name" : "Forecast",
+      "parentNamespaceId" : "5f79adce-1cdb-4518-88fd-f1b47103c255",
+      "reference" : {
+        "type" : "Input",
+        "name" : "Forecast",
+        "path" : "",
+        "params" : {
+          "Location" : "Boston"
+        },
+        "connectionName" : "Weather_MQTT"
+      }
+    }, {
+      "type" : "local",
+      "id" : "5111d2f3-f23c-4b21-adf8-f9302218f4cf",
+      "name" : "Hollywood",
+      "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "55360b5e-aac5-45be-a632-6650a51b9c6c",
+      "name" : "Position",
+      "parentNamespaceId" : "5111d2f3-f23c-4b21-adf8-f9302218f4cf",
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Position_Instance",
+        "path" : "",
+        "params" : {
+          "Latitude" : "34.0934761",
+          "Longitude" : "-118.3349617"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "5fe21b9b-03ab-47f2-9278-7cc7a73057bc",
+      "name" : "Forecast",
+      "parentNamespaceId" : "5111d2f3-f23c-4b21-adf8-f9302218f4cf",
+      "reference" : {
+        "type" : "Input",
+        "name" : "Forecast",
+        "path" : "",
+        "params" : {
+          "Location" : "Hollywood"
+        },
+        "connectionName" : "Weather_MQTT"
+      }
+    }, {
+      "type" : "local",
+      "id" : "6ec3b689-ee5c-41e9-bf19-d91490ecbee4",
+      "name" : "MtWashington",
+      "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "de726d98-44b2-4579-9957-3566076df22f",
+      "name" : "Position",
+      "parentNamespaceId" : "6ec3b689-ee5c-41e9-bf19-d91490ecbee4",
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Position_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "MtWashington",
+          "Latitude" : "44.2707",
+          "Longitude" : "-71.3032"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "3326c0bd-ee54-4638-9d60-01a32c37c986",
+      "name" : "Forecast",
+      "parentNamespaceId" : "6ec3b689-ee5c-41e9-bf19-d91490ecbee4",
+      "reference" : {
+        "type" : "Input",
+        "name" : "Forecast",
+        "path" : "",
+        "params" : {
+          "Location" : "MtWashington"
+        },
+        "connectionName" : "Weather_MQTT"
+      }
+    }, {
+      "type" : "local",
+      "id" : "51e6b7f4-46de-4917-9985-948b369d333e",
+      "name" : "Portland",
+      "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "8e8b4c9e-f614-44b3-8bf5-1d56e7d9b3c8",
+      "name" : "Position",
+      "parentNamespaceId" : "51e6b7f4-46de-4917-9985-948b369d333e",
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Position_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : null,
+          "Latitude" : "43.6602",
+          "Longitude" : "-70.2485"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "13a2d4ad-0ceb-403f-86bb-1285f9058897",
+      "name" : "Forecast",
+      "parentNamespaceId" : "51e6b7f4-46de-4917-9985-948b369d333e",
+      "reference" : {
+        "type" : "Input",
+        "name" : "Forecast",
+        "path" : "",
+        "params" : {
+          "Location" : "Portland"
+        },
+        "connectionName" : "Weather_MQTT"
+      }
+    }, {
+      "type" : "local",
+      "id" : "eabdacfe-00dd-4155-b38e-d8776a09dc40",
+      "name" : "Pittsburgh",
+      "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "76dbe7fd-52f1-48e4-8c07-e8d3371d2021",
+      "name" : "Position",
+      "parentNamespaceId" : "eabdacfe-00dd-4155-b38e-d8776a09dc40",
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Position_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "Pittsburgh",
+          "Latitude" : "40.4416",
+          "Longitude" : "-80.0109"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "98d9295e-147b-4eb4-bc78-af251ce54bcb",
+      "name" : "Forecast",
+      "parentNamespaceId" : "eabdacfe-00dd-4155-b38e-d8776a09dc40",
+      "reference" : {
+        "type" : "Input",
+        "name" : "Forecast",
+        "path" : "",
+        "params" : {
+          "Location" : "Pittsburgh"
+        },
+        "connectionName" : "Weather_MQTT"
+      }
+    }, {
+      "type" : "local",
+      "id" : "855686e6-5236-492e-8b4e-c9f40c0cad8d",
+      "name" : "Savannah",
+      "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "7a5b762e-5db0-46d5-be3b-1834d224d06c",
+      "name" : "Position",
+      "parentNamespaceId" : "855686e6-5236-492e-8b4e-c9f40c0cad8d",
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Position_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "Savannah",
+          "Latitude" : "32.0525",
+          "Longitude" : "-81.1025"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "9b0c2158-5eb6-47ad-9664-7d9546e60c78",
+      "name" : "Forecast",
+      "parentNamespaceId" : "855686e6-5236-492e-8b4e-c9f40c0cad8d",
+      "reference" : {
+        "type" : "Input",
+        "name" : "Forecast",
+        "path" : "",
+        "params" : {
+          "Location" : "Savannah"
+        },
+        "connectionName" : "Weather_MQTT"
+      }
+    } ]
+  },
+  "network" : {
+    "groups" : [ ],
+    "hubs" : [ ]
+  }
+}
