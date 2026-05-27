@@ -18,6 +18,12 @@ login_*.png
 post_login_*.png
 *_preview.png
 section*_preview.png
+toolbar_check*.png
+
+# --- One-off PDF exports produced during testing ----------------------------
+# (Output of the in-app "Export PDF" feature exercised in PowerShell.)
+sample_chart_export.pdf
+WeatherPlot_*.pdf
 
 # --- Build artifacts --------------------------------------------------------
 *.pdb

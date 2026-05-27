@@ -71,8 +71,9 @@ The top toolbar (44 px tall, left to right):
 | **Refresh** | Pulls fresh data from Highbyte: `POST /data/v1/pipelines/GetLocations/value` then a `GetForecastForLocation` call per location. Updates the chart and overwrites `weather_data.json`. |
 | **Temperature** checkbox | Show/hide the solid temperature lines and the left Y-axis. |
 | **Wind Speed** checkbox | Show/hide the dashed wind-speed lines and the right Y-axis. |
-| **Location:** dropdown button | Opens a popup with **Select All** + a checkbox list of every location (see §4). The button label summarizes the current selection. |
+| **Location:** dropdown button | Opens a popup with **Select All** / **Unselect All** + a checkbox list of every location (see §4). The button label summarizes the current selection. |
 | **Reset Zoom** | Restore the full data time range. Dimmed when not zoomed; brightens when a zoom is active. |
+| **Export PDF** | Capture the current chart view (whatever's currently visible — selected locations, zoom level, axis visibility, hover tooltip excluded) and save it as a PDF. See §5.1. |
 | **Status** label | Live progress text during refresh (`"Fetching Pittsburgh forecast … (4/6)"`) or summary after load (`"Loaded 5 locations from Highbyte."`). Shows errors if any locations failed. |
 | **Refreshed / Cached** label (far right) | Last refresh time + source URL, e.g. `Refreshed: May 24, 2026 9:28 PM | Source: Highbyte (http://localhost:8885)`. If a refresh hasn't run yet, shows the cache timestamp. |
 
@@ -129,6 +130,16 @@ The location dropdown and the legend-row click toggle are two independent ways t
 - Click **Reset Zoom** in the toolbar to restore the full range.
 
 Zoom level is preserved across location toggles, checkbox toggles, and data refreshes (clamped to the new data range if needed).
+
+### 5.1 Export PDF
+
+Click the **Export PDF** button in the toolbar to save the current chart view as a PDF document.
+
+- A standard *Save File* dialog appears. The default filename is `WeatherPlot_<YYYYMMDD_HHMM>.pdf`; pick any name and location.
+- The PDF is rendered in **landscape Letter** size with 40 px margins. The chart is scaled to fit the page while preserving its aspect ratio, centered with letterboxing if necessary.
+- The exported chart matches exactly what's on screen: which locations are visible, which series types (temp / wind) are on, the current zoom range, and the auto-rescaled axes for that zoom. The interactive hover tooltip is intentionally **not** included.
+- Implementation: `ChartPanel.RenderToBitmap()` re-runs the chart's `OnPaint` against an in-memory `Graphics`, and a `PrintDocument` configured for **Microsoft Print to PDF** writes the bitmap to the chosen file path. No external PDF library or NuGet package is involved — this is all built into the .NET Framework on Windows.
+- If the *Microsoft Print to PDF* printer isn't installed on the machine, you'll see a clear error message and a hint to enable it under *Settings → Printers & scanners*.
 
 ---
 
@@ -314,6 +325,7 @@ This app picked up a few hardenings during development:
 | **Scroll up** over the chart | Zoom in at cursor |
 | **Scroll down** over the chart | Zoom out at cursor |
 | Click **Reset Zoom** | Restore full time range |
+| Click **Export PDF** | Save the current chart view as a PDF (Save dialog, then writes via Microsoft Print to PDF) |
 
 ---
 
@@ -339,3 +351,4 @@ This app picked up a few hardenings during development:
 - **v7** — Select All button in dropdown popup
 - **v8** — Unselect All button beside Select All in dropdown popup
 - **v9** — Connect dialog at startup (Username/Password → `/data/v1/login` for bearer token, or paste-a-token mode); `connection.json` persists URL + username + mode
+- **v10** — Export PDF button in toolbar (renders the current chart view to a PDF via `PrintDocument` + *Microsoft Print to PDF*, landscape Letter, aspect-preserved)

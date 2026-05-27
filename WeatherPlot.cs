@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Printing;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -239,6 +240,41 @@ namespace WeatherPlot
             RecomputeYBounds();
             Invalidate();
             if (wasZoomed && ZoomChanged != null) ZoomChanged(this, EventArgs.Empty);
+        }
+
+        // Render the chart to an in-memory Bitmap at the current panel size.
+        // Used by the "Export PDF" feature in MainForm — re-runs OnPaint against a memory
+        // Graphics so the snapshot exactly matches what's on screen (minus the hover tooltip,
+        // which would be visual noise in an exported document).
+        public Bitmap RenderToBitmap()
+        {
+            int w = Math.Max(ClientSize.Width, 100);
+            int h = Math.Max(ClientSize.Height, 100);
+            var bmp = new Bitmap(w, h);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                using (var bg = new SolidBrush(BackColor))
+                    g.FillRectangle(bg, 0, 0, w, h);
+
+                // Suppress hover state during the snapshot so the rendered output is clean.
+                var savedHoverSeries = hoverSeries;
+                var savedHoverIndex = hoverIndex;
+                hoverSeries = null;
+                hoverIndex = -1;
+                try
+                {
+                    using (var pe = new PaintEventArgs(g, new Rectangle(0, 0, w, h)))
+                    {
+                        OnPaint(pe);
+                    }
+                }
+                finally
+                {
+                    hoverSeries = savedHoverSeries;
+                    hoverIndex = savedHoverIndex;
+                }
+            }
+            return bmp;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -1119,6 +1155,7 @@ namespace WeatherPlot
         private Button selectAllBtn;
         private Button unselectAllBtn;
         private Button resetZoomBtn;
+        private Button exportPdfBtn;
         private Label statusLbl;
         private Label updatedLbl;
         private Panel topBar;
@@ -1387,10 +1424,28 @@ namespace WeatherPlot
             resetZoomBtn.FlatAppearance.BorderColor = Color.FromArgb(80, 90, 110);
             resetZoomBtn.Click += (s, e) => { if (chart != null) chart.ResetZoom(); };
 
+            exportPdfBtn = new Button
+            {
+                Text = "Export PDF",
+                Left = 775,
+                Top = 9,
+                Width = 100,
+                Height = 28,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(45, 48, 56),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 9.5f),
+                Cursor = Cursors.Hand,
+                TabStop = false,
+            };
+            exportPdfBtn.FlatAppearance.BorderColor = Color.FromArgb(80, 90, 110);
+            exportPdfBtn.FlatAppearance.MouseOverBackColor = Color.FromArgb(60, 70, 85);
+            exportPdfBtn.Click += (s, e) => ExportChartToPdf();
+
             statusLbl = new Label
             {
                 AutoSize = true,
-                Left = 780,
+                Left = 890,
                 Top = 13,
                 ForeColor = Color.FromArgb(200, 205, 215),
                 Font = new Font("Segoe UI", 9.5f),
@@ -1401,7 +1456,7 @@ namespace WeatherPlot
             {
                 AutoSize = false,
                 Dock = DockStyle.Right,
-                Width = 540,
+                Width = 460,
                 TextAlign = ContentAlignment.MiddleRight,
                 ForeColor = Color.FromArgb(160, 165, 175),
                 Font = new Font("Segoe UI", 9f),
@@ -1410,6 +1465,7 @@ namespace WeatherPlot
 
             topBar.Controls.Add(updatedLbl);
             topBar.Controls.Add(statusLbl);
+            topBar.Controls.Add(exportPdfBtn);
             topBar.Controls.Add(resetZoomBtn);
             topBar.Controls.Add(locButton);
             topBar.Controls.Add(locLabel);
@@ -1709,6 +1765,92 @@ namespace WeatherPlot
                 else a();
             }
             catch (ObjectDisposedException) { }
+        }
+
+        private void ExportChartToPdf()
+        {
+            if (chart == null || chart.Series.Count == 0)
+            {
+                MessageBox.Show(this,
+                    "No chart data to export. Click Refresh to fetch the forecast first.",
+                    "Export PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string defaultName = "WeatherPlot_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".pdf";
+            using (var sfd = new SaveFileDialog
+            {
+                Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*",
+                FileName = defaultName,
+                DefaultExt = "pdf",
+                AddExtension = true,
+                Title = "Export chart as PDF",
+                OverwritePrompt = true,
+            })
+            {
+                if (sfd.ShowDialog(this) != DialogResult.OK) return;
+                string outPath = sfd.FileName;
+
+                Bitmap snapshot = null;
+                try
+                {
+                    snapshot = chart.RenderToBitmap();
+
+                    using (var pd = new PrintDocument())
+                    {
+                        pd.DocumentName = Path.GetFileNameWithoutExtension(outPath);
+                        pd.PrinterSettings.PrinterName = "Microsoft Print to PDF";
+                        if (!pd.PrinterSettings.IsValid)
+                        {
+                            MessageBox.Show(this,
+                                "The \"Microsoft Print to PDF\" printer is not available on this " +
+                                "machine.\r\nEnable it under Settings → Printers & scanners, then try again.",
+                                "Export PDF", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+                        pd.PrinterSettings.PrintToFile = true;
+                        pd.PrinterSettings.PrintFileName = outPath;
+                        pd.DefaultPageSettings.Landscape = true; // chart is wide
+                        pd.DefaultPageSettings.Margins = new Margins(40, 40, 40, 40);
+
+                        pd.PrintPage += (s, e) =>
+                        {
+                            var page = e.MarginBounds;
+                            // Scale to fit while preserving aspect ratio; center on the page.
+                            double srcAR = (double)snapshot.Width / Math.Max(1, snapshot.Height);
+                            double dstAR = (double)page.Width / Math.Max(1, page.Height);
+                            Rectangle target;
+                            if (srcAR > dstAR)
+                            {
+                                int th = (int)(page.Width / srcAR);
+                                target = new Rectangle(page.X, page.Y + (page.Height - th) / 2, page.Width, th);
+                            }
+                            else
+                            {
+                                int tw = (int)(page.Height * srcAR);
+                                target = new Rectangle(page.X + (page.Width - tw) / 2, page.Y, tw, page.Height);
+                            }
+                            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                            e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                            e.Graphics.DrawImage(snapshot, target);
+                            e.HasMorePages = false;
+                        };
+                        pd.Print();
+                    }
+
+                    statusLbl.Text = "Saved PDF: " + outPath;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this,
+                        "Failed to export PDF:\r\n" + ex.Message,
+                        "Export PDF", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    if (snapshot != null) snapshot.Dispose();
+                }
+            }
         }
 
         [STAThread]
