@@ -6,8 +6,8 @@ connection.json
 weather_data.json
 
 # --- Generated documentation artifacts --------------------------------------
-# Intermediate HTML produced by MdToHtml.exe from README.md.
-README.html
+# Intermediate HTML produced by MdToHtml.exe from any *.md.
+*.html
 
 # --- Test / verification screenshots ----------------------------------------
 # Anything generated during automated screenshotting. We keep `screenshot.png`

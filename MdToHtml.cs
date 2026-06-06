@@ -37,6 +37,30 @@ class MdToHtml
         bool tableHadSeparator = false;
         var listBuf = new List<string>();
         char listKind = '\0'; // '-' for ul, 'o' for ol
+        var bqLines = new List<string>();
+
+        Action flushBlockquote = () =>
+        {
+            if (bqLines.Count == 0) return;
+            sb.Append("<blockquote>");
+            // Group consecutive non-empty lines into paragraphs; blank stripped lines separate them.
+            var para = new StringBuilder();
+            Action emitPara = () =>
+            {
+                if (para.Length == 0) return;
+                sb.Append("<p>").Append(InlineFormat(para.ToString().TrimEnd())).Append("</p>");
+                para.Length = 0;
+            };
+            foreach (var bl in bqLines)
+            {
+                if (string.IsNullOrWhiteSpace(bl)) { emitPara(); continue; }
+                if (para.Length > 0) para.Append(' ');
+                para.Append(bl);
+            }
+            emitPara();
+            sb.Append("</blockquote>");
+            bqLines.Clear();
+        };
 
         Action flushTable = () =>
         {
@@ -94,12 +118,23 @@ class MdToHtml
                 }
                 else
                 {
-                    flushTable(); flushList();
+                    flushTable(); flushList(); flushBlockquote();
                     inCode = true;
                 }
                 continue;
             }
             if (inCode) { codeLines.Add(line); continue; }
+
+            // --- Blockquote line ---
+            // Match "> rest" OR a bare ">" continuation line.
+            var bqm = Regex.Match(line, @"^>\s?(.*)$");
+            if (bqm.Success)
+            {
+                flushTable(); flushList();
+                bqLines.Add(bqm.Groups[1].Value);
+                continue;
+            }
+            flushBlockquote();
 
             // --- Table row ---
             if (line.StartsWith("|") && line.TrimEnd().EndsWith("|"))
@@ -177,7 +212,7 @@ class MdToHtml
             sb.Append("<p>").Append(InlineFormat(line)).Append("</p>");
         }
 
-        flushTable(); flushList();
+        flushTable(); flushList(); flushBlockquote();
         sb.Append("</main></body></html>");
         return sb.ToString();
     }
