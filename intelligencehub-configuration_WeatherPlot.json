@@ -9,37 +9,6 @@
   "project" : {
     "version" : 14,
     "connections" : [ {
-      "name" : "NOAA_RestAPI",
-      "uri" : "rest.client://Weather",
-      "tags" : [ "WeatherPlot" ],
-      "writes" : {
-        "flattenModeledValues" : false
-      },
-      "writeThrottle" : {
-        "enabled" : false,
-        "maxBatchSizePerTarget" : 1000,
-        "batchDelay" : {
-          "duration" : 20,
-          "units" : "Milliseconds"
-        }
-      },
-      "subscriptions" : { },
-      "storeForward" : {
-        "enabled" : false,
-        "maxEntries" : 100,
-        "waitOnFailureInterval" : {
-          "duration" : 1,
-          "units" : "Seconds"
-        }
-      },
-      "settings" : {
-        "authentication" : {
-          "type" : "None",
-          "options" : { }
-        },
-        "baseURL" : "https://forecast.weather.gov/"
-      }
-    }, {
       "name" : "Weather_MQTT",
       "uri" : "mqtt://localhost:1885",
       "tags" : [ "WeatherPlot" ],
@@ -108,32 +77,6 @@
       }
     } ],
     "inputs" : [ {
-      "name" : "PortlandWeather",
-      "connection" : "NOAA_RestAPI",
-      "type" : "rest.client",
-      "qualifier" : {
-        "acceptType" : "*/*",
-        "method" : "GET",
-        "contentType" : "application/json",
-        "includeMetadata" : false,
-        "endpointURL" : "MapClick.php?lat=43.6894&lon=-70.2865&FcstType=digitalDWML",
-        "isFile" : false
-      },
-      "cacheLifetime" : {
-        "enabled" : true,
-        "interval" : {
-          "duration" : 15,
-          "units" : "Minutes"
-        }
-      },
-      "template" : {
-        "type" : "Off"
-      },
-      "referenceMap" : [ ],
-      "parameters" : {
-        "type" : "EmptyParameters"
-      }
-    }, {
       "name" : "Forecast",
       "connection" : "Weather_MQTT",
       "type" : "mqtt",
@@ -1779,6 +1722,116 @@
         "path" : "",
         "params" : {
           "Location" : "Savannah"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "f0132270-1227-4f4e-9e61-c7a0fc07d35d",
+      "name" : "Site1",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "cdefd10c-a5fc-4280-9229-3a512361d45f",
+      "name" : "AMRs",
+      "parentNamespaceId" : "f0132270-1227-4f4e-9e61-c7a0fc07d35d",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "f3773f6e-c64e-4d87-9abf-dccd4e630829",
+      "name" : "AMR1",
+      "parentNamespaceId" : "cdefd10c-a5fc-4280-9229-3a512361d45f",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Locations_Instance",
+        "path" : "",
+        "params" : {
+          "Topic" : "Site1/AMRs/AMR1"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "635c5a08-6832-4934-8a76-d236dceeb6c1",
+      "name" : "AMR2",
+      "parentNamespaceId" : "cdefd10c-a5fc-4280-9229-3a512361d45f",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Locations_Instance",
+        "path" : "",
+        "params" : {
+          "Topic" : "Site1/AMRs/AMR2"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "20b0482f-4ff3-4767-b40e-9fb8033acf83",
+      "name" : "ProductionLine",
+      "parentNamespaceId" : "f0132270-1227-4f4e-9e61-c7a0fc07d35d",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Empty"
+      }
+    }, {
+      "type" : "local",
+      "id" : "cfccbee1-22d4-4799-9791-2c1703975273",
+      "name" : "PLC_1",
+      "parentNamespaceId" : "20b0482f-4ff3-4767-b40e-9fb8033acf83",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "SensorData_Instance",
+        "path" : "",
+        "params" : {
+          "Topic" : "Site1/ProductionLine/PLC_1"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "11327028-12a1-4f20-9969-532ba5ba9a73",
+      "name" : "PLC_2",
+      "parentNamespaceId" : "20b0482f-4ff3-4767-b40e-9fb8033acf83",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "SensorData_Instance",
+        "path" : "",
+        "params" : {
+          "Topic" : "Site1/ProductionLine/PLC_2"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "a428fcdd-b0d6-4d1f-b99f-3d32c7915a6a",
+      "name" : "PLC_3",
+      "parentNamespaceId" : "20b0482f-4ff3-4767-b40e-9fb8033acf83",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "SensorData_Instance",
+        "path" : "",
+        "params" : {
+          "Topic" : "Site1/ProductionLine/PLC_3"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "231533af-f65f-440b-8c18-f829cabdb82a",
+      "name" : "PLC_4",
+      "parentNamespaceId" : "20b0482f-4ff3-4767-b40e-9fb8033acf83",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "SensorData_Instance",
+        "path" : "",
+        "params" : {
+          "Topic" : "Site1/ProductionLine/PLC_4"
         }
       }
     } ],
