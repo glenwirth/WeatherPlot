@@ -1,6 +1,6 @@
 # WeatherPlot
 
-A standalone Windows desktop app that plots hourly weather forecasts (temperature + wind speed) for multiple locations on a single interactive chart. Data is sourced from a [Highbyte](https://www.highbyte.com/) Intelligence Hub via its REST data API, with the National Weather Service's hourly forecast underneath.
+A standalone Windows desktop app that plots hourly weather forecasts (temperature + wind speed) for multiple locations on a single interactive chart. Data is sourced from a [HighByte](https://www.highbyte.com/) Intelligence Hub via the [i3x industrial data API](https://github.com/cesmii/i3X), with the National Weather Service's hourly forecast underneath.
 
 ![overview](screenshot.png)
 
@@ -9,21 +9,21 @@ A standalone Windows desktop app that plots hourly weather forecasts (temperatur
 ## 1. Quick Start
 
 1. Double-click `WeatherPlot.exe`.
-2. The **Connect to Highbyte** dialog appears (see [§1.1](#11-the-connect-dialog)). Enter the server URL and either your credentials or a pre-issued bearer token, then click **Connect**.
-3. On success, the main chart window opens. It loads from `weather_data.json` (if present) immediately, then refreshes in the background using the bearer token obtained from the login. New cache is written on every successful refresh, so the next startup works even offline (once you've authenticated).
+2. The **Connect to HighByte i3x** dialog appears (see [§1.1](#11-the-connect-dialog)). Enter the server URL (host root, no path) and either your credentials or a pre-issued bearer token, then click **Connect**.
+3. On success, the main chart window opens. It loads from `weather_data.json` (if present) immediately, then refreshes in the background by calling the i3x API. New cache is written on every successful refresh, so the next startup works even offline (once you've authenticated).
 
 No installer, no .NET SDK, no NuGet packages — just a single `.exe` plus a small JSON cache file and a tiny `connection.json` beside it.
 
 ### 1.1 The Connect Dialog
 
-When the app launches, a modal **Connect to Highbyte** dialog comes up first. The main window never appears until you successfully authenticate (or cancel out, which exits the app).
+When the app launches, a modal **Connect to HighByte i3x** dialog comes up first. The main window never appears until you successfully authenticate (or cancel out, which exits the app).
 
 The dialog has:
 
-- **Server URL** — defaults to `http://localhost:8885`. If you omit the scheme, `http://` is added automatically. Trailing slashes are stripped.
+- **Server URL** — defaults to `http://localhost:8885`. This is the **host root**, not the i3x path. The app appends `/i3x/v1/...` to every data call. If you omit the scheme, `http://` is added automatically; trailing slashes are stripped.
 - A mode toggle:
-  - **Username & Password** *(default)* — calls `POST {url}/data/v1/login` with `{"username":"...", "password":"..."}` and reads `access_token` from the response. That token becomes the bearer token used for all subsequent API calls in this session.
-  - **Bearer Token** — paste a pre-issued token directly. Use this when the Highbyte server has *Allow Login Authentication* disabled (you'll see an HTTP 403 from the Login mode in that case), or when you already have a service token.
+  - **Username & Password** — calls `POST {url}/data/v1/login` (the HighByte Data REST helper, not part of i3x itself) with `{"username":"...", "password":"..."}` and reads `access_token` from the response. That token becomes the bearer token used for all subsequent i3x calls in this session. Note: not all i3x deployments issue tokens through this path — if the returned token doesn't authorize `/i3x/v1` requests, use Bearer Token mode instead.
+  - **Bearer Token** — paste a pre-issued token directly. This is the recommended path for most i3x deployments, since the i3x standard does not itself define a login endpoint; tokens are typically provisioned server-side.
 - **Connect** / **Cancel** buttons. **Enter** triggers Connect; **Esc** triggers Cancel.
 
 Error messages appear in red below the form for invalid URL, bad credentials (HTTP 401), or the *Allow Login Authentication* setting being disabled on the server (HTTP 403, with a hint to switch to Bearer Token mode).
@@ -68,7 +68,7 @@ The top toolbar (44 px tall, left to right):
 
 | Control | Behavior |
 |---|---|
-| **Refresh** | Pulls fresh data from Highbyte: `POST /data/v1/pipelines/GetLocations/value` then a `GetForecastForLocation` call per location. Updates the chart and overwrites `weather_data.json`. |
+| **Refresh** | Pulls fresh data from i3x: `GET /i3x/v1/objects` (filter children of `Weather`) then `POST /i3x/v1/objects/value` per location with `{"elementIds":["Weather.<name>.Forecast"]}`. Updates the chart and overwrites `weather_data.json`. |
 | **Temperature** checkbox | Show/hide the solid temperature lines and the left Y-axis. |
 | **Wind Speed** checkbox | Show/hide the dashed wind-speed lines and the right Y-axis. |
 | **Location:** dropdown button | Opens a popup with **Select All** / **Unselect All** + a checkbox list of every location (see §4). The button label summarizes the current selection. |
@@ -145,21 +145,40 @@ Click the **Export PDF** button in the toolbar to save the current chart view as
 
 ## 6. Data Source
 
-### Highbyte endpoints
+### i3x endpoints
 
-The app calls three Highbyte endpoints:
+The app calls three endpoints on the HighByte Intelligence Hub, one login helper plus two i3x-standard reads:
 
-| Endpoint | HTTP | Body | Returns |
+| Endpoint | HTTP | Body / Notes | Returns |
 |---|---|---|---|
-| `Login` | `POST /data/v1/login` | `{"username":"...", "password":"..."}` | `{"access_token":"...", "token_type":"...", "expires_in":N}` — called once at startup from the Connect dialog (skipped in Bearer Token mode). |
-| `GetLocations` | `POST /data/v1/pipelines/GetLocations/value` | `{}` | `[{"Location":"Boston"}, …]` |
-| `GetForecastForLocation` | `POST /data/v1/pipelines/GetForecastForLocation/value` | `{"Location":"<name>"}` | `[{"CurrentWeather":{…}, "WeatherForecast":[{…}, …]}]` |
+| `Login` (optional) | `POST /data/v1/login` | `{"username":"...", "password":"..."}` — HighByte's proprietary REST login. Called once at startup from the Connect dialog in Username & Password mode; skipped in Bearer Token mode. | `{"access_token":"...", "token_type":"...", "expires_in":N}` |
+| Discover locations | `GET /i3x/v1/objects` | Standard i3x catalog endpoint. Returns every element in the hierarchy. Client-side filters to `parentId == "Weather"` and takes each entry's `displayName`. | `{"success":true, "result":[{"elementId":"Weather.Boston","displayName":"Boston","parentId":"Weather", ...}, ...]}` |
+| Read forecast | `POST /i3x/v1/objects/value` | Standard i3x current-value endpoint. Body: `{"elementIds":["Weather.<name>.Forecast"]}` — one call per location. | `{"success":true, "results":[{"elementId":"Weather.Boston.Forecast","result":{"value":{"Periods":[{"Time":"...", "Temperature":78, "WindSpeed":"9 mph", "WindDirection":"W", "Forecast":"Sunny"}, ...]}}}]}` |
 
-Each forecast point has: `Time`, `Temperature` (°F), `WindSpeed` (string like `"12 mph"`), `WindDirection`, `Forecast` (NWS short text).
+The `Periods` array is the sequence of hourly forecast points. Each point has `Time` (ISO-8601 with offset), `Temperature` (integer °F), `WindSpeed` (string like `"12 mph"`), `WindDirection`, and `Forecast` (NWS short text).
+
+### Data model
+
+The i3x hierarchy this app assumes:
+
+```
+Weather                                     (root object)
+├── Boston                                  (location — displayName is what appears in the UI)
+│   ├── Position                            (unused by this app)
+│   ├── Current                             (unused by this app)
+│   └── Forecast   ← type:Forecast          (this is what the app reads)
+├── Hollywood      / same structure
+├── MtWashington   / same structure
+├── Pittsburgh     / same structure
+├── Portland       / same structure
+└── Savannah       / same structure
+```
+
+Locations are discovered dynamically from the server — the app doesn't hard-code names. New locations added under `Weather` on the server appear automatically after the next Refresh.
 
 ### Authentication
 
-After the Connect dialog completes, every pipeline request carries `Authorization: Bearer <token>` where `<token>` was either returned by `/data/v1/login` or pasted in directly. TLS 1.2 is explicitly enabled for HTTPS deployments.
+After the Connect dialog completes, every i3x request carries `Authorization: Bearer <token>` where `<token>` was either returned by `/data/v1/login` (Username & Password mode) or pasted in directly (Bearer Token mode). Note that the HighByte Data REST API and the i3x API often use **different tokens** on the same host — if a login-issued token gets rejected by `/i3x/v1`, switch to Bearer Token mode with an i3x-scoped token. TLS 1.2 is explicitly enabled for HTTPS deployments.
 
 ### Cache (`weather_data.json`)
 
@@ -282,7 +301,7 @@ Target runtime: any Windows 7+ machine with .NET Framework 4.x — already prese
 | `ConnectionSettings` | Load/save `connection.json` (URL + username + mode, never secrets) |
 | `MainForm` | Form, toolbar wiring, refresh coordination, cache I/O |
 | `ChartPanel` | Custom-drawn chart (GDI+), zoom/hover/legend interaction |
-| `HighbyteClient` | HTTP client for login + the two data pipelines; configured at runtime via `Configure(url, token)` |
+| `I3xClient` | HTTP client for login helper + the two i3x-standard reads (`GET /objects`, `POST /objects/value`); configured at runtime via `Configure(url, token)` |
 | `WindParser` | Extract leading numeric value from strings like `"12 mph"` |
 | `LocationSeries` | Per-location data: `Times[]`, `Temperatures[]`, `WindSpeeds[]`, `Visible`, `Color` |
 | `ForecastPoint` | One forecast hour: `Time`, `Temperature`, `WindSpeed`, `WindDirection`, `Forecast` |
@@ -352,3 +371,4 @@ This app picked up a few hardenings during development:
 - **v8** — Unselect All button beside Select All in dropdown popup
 - **v9** — Connect dialog at startup (Username/Password → `/data/v1/login` for bearer token, or paste-a-token mode); `connection.json` persists URL + username + mode
 - **v10** — Export PDF button in toolbar (renders the current chart view to a PDF via `PrintDocument` + *Microsoft Print to PDF*, landscape Letter, aspect-preserved)
+- **v11** — Switched data source from HighByte proprietary REST pipelines to the vendor-neutral [i3x industrial API](https://github.com/cesmii/i3X). Locations are now discovered dynamically as children of the `Weather` root object; per-location forecasts come from `POST /i3x/v1/objects/value`. Dialog and status labels updated. `HighbyteClient` renamed `I3xClient`.

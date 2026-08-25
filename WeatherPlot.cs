@@ -279,7 +279,25 @@ namespace WeatherPlot
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
+            try
+            {
+                base.OnPaint(e);
+                PaintInner(e);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    File.AppendAllText(Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "crash.log"),
+                        string.Format("[{0:HH:mm:ss.fff}] OnPaint threw: {1}{2}",
+                            DateTime.Now, ex, Environment.NewLine));
+                }
+                catch { }
+            }
+        }
+
+        private void PaintInner(PaintEventArgs e)
+        {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
@@ -680,11 +698,16 @@ namespace WeatherPlot
         }
     }
 
-    public static class HighbyteClient
+    public static class I3xClient
     {
         // Configured at runtime by LoginForm after the user successfully authenticates.
+        // _baseUrl is the SERVER ROOT (e.g. "http://localhost:8885"); the i3x standard path
+        // "/i3x/v1/..." is appended per call. The optional /data/v1/login endpoint sits under
+        // the same root and is only used when the user picks the Username & Password mode.
         private static string _baseUrl = "http://localhost:8885";
         private static string _bearerToken = "";
+
+        private const string I3xPathPrefix = "/i3x/v1";
 
         public static string DisplayBaseUrl { get { return _baseUrl; } }
         public static bool IsConfigured { get { return !string.IsNullOrEmpty(_bearerToken); } }
@@ -695,12 +718,15 @@ namespace WeatherPlot
             _bearerToken = bearerToken ?? "";
         }
 
-        static HighbyteClient()
+        static I3xClient()
         {
             try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch { }
         }
 
         // POST { username, password } to /data/v1/login and return the access_token from the response.
+        // The Highbyte login endpoint (not part of the i3x standard) is used as a convenience for
+        // servers that federate one token across both APIs; if the returned token does not
+        // authorize /i3x/v1 calls the user can switch to Bearer Token mode instead.
         // Throws a descriptive exception on 401 (bad credentials) or 403 (login disabled).
         public static string Login(string baseUrl, string username, string password)
         {
@@ -751,18 +777,27 @@ namespace WeatherPlot
             }
         }
 
-        private static string PostJson(string path, string jsonBody)
+        // Shared request helper for both /data/v1/login (POST) and /i3x/v1/... (GET or POST).
+        // `path` is a full path starting with '/' (e.g. "/i3x/v1/objects").
+        // For GET, pass jsonBody = null.
+        private static string SendJson(string path, string httpMethod, string jsonBody)
         {
             var req = (HttpWebRequest)WebRequest.Create(_baseUrl + path);
-            req.Method = "POST";
-            req.ContentType = "application/json";
+            req.Method = httpMethod;
             req.Accept = "application/json";
-            req.Headers["Authorization"] = "Bearer " + _bearerToken;
+            if (!string.IsNullOrEmpty(_bearerToken))
+                req.Headers["Authorization"] = "Bearer " + _bearerToken;
             req.Timeout = 30000;
             req.ReadWriteTimeout = 30000;
-            var data = Encoding.UTF8.GetBytes(jsonBody ?? "{}");
-            req.ContentLength = data.Length;
-            using (var rs = req.GetRequestStream()) rs.Write(data, 0, data.Length);
+
+            if (jsonBody != null)
+            {
+                req.ContentType = "application/json";
+                var data = Encoding.UTF8.GetBytes(jsonBody);
+                req.ContentLength = data.Length;
+                using (var rs = req.GetRequestStream()) rs.Write(data, 0, data.Length);
+            }
+
             try
             {
                 using (var resp = (HttpWebResponse)req.GetResponse())
@@ -781,33 +816,51 @@ namespace WeatherPlot
             }
         }
 
+        // GET /i3x/v1/objects returns every object in the catalog with { elementId, displayName,
+        // typeElementId, parentId, isComposition, isExtended }. We filter to direct children of
+        // the "Weather" node (parentId == "Weather") and return their displayName (e.g. "Boston").
         public static string[] GetLocations()
         {
-            string json = PostJson("/data/v1/pipelines/GetLocations/value", "{}");
-            var ser = new JavaScriptSerializer { MaxJsonLength = 10 * 1024 * 1024 };
-            var arr = ser.Deserialize<List<Dictionary<string, object>>>(json);
+            string json = SendJson(I3xPathPrefix + "/objects", "GET", null);
+            var ser = new JavaScriptSerializer { MaxJsonLength = 50 * 1024 * 1024 };
+            var root = ser.Deserialize<Dictionary<string, object>>(json);
+            if (root == null || !root.ContainsKey("result")) return new string[0];
+            var arr = (System.Collections.ArrayList)root["result"];
             var names = new List<string>();
-            foreach (var entry in arr)
+            foreach (Dictionary<string, object> obj in arr)
             {
-                object v;
-                if (entry.TryGetValue("Location", out v) && v is string)
-                    names.Add((string)v);
+                object p; obj.TryGetValue("parentId", out p);
+                if (!(p is string) || (string)p != "Weather") continue;
+                object dn; obj.TryGetValue("displayName", out dn);
+                if (dn is string) names.Add((string)dn);
             }
+            names.Sort(StringComparer.OrdinalIgnoreCase);
             return names.ToArray();
         }
 
+        // POST /i3x/v1/objects/value with { elementIds: [ "Weather.<loc>.Forecast" ] } returns
+        // { success, results: [ { success, elementId, result: { value: { Periods: [ {...} ] } } } ] }.
+        // Each Periods entry has Time, Temperature, WindSpeed, WindDirection, Forecast — the same
+        // shape the pipeline call returned before, so the rest of the app is unaffected.
         public static ForecastPoint[] GetForecast(string location)
         {
-            string body = "{\"Location\":\"" + EscapeJsonString(location) + "\"}";
-            string json = PostJson("/data/v1/pipelines/GetForecastForLocation/value", body);
+            string elementId = "Weather." + location + ".Forecast";
+            string body = "{\"elementIds\":[\"" + EscapeJsonString(elementId) + "\"]}";
+            string json = SendJson(I3xPathPrefix + "/objects/value", "POST", body);
             var ser = new JavaScriptSerializer { MaxJsonLength = 50 * 1024 * 1024 };
-            var arr = ser.Deserialize<List<Dictionary<string, object>>>(json);
-            if (arr.Count == 0) return new ForecastPoint[0];
-            var first = arr[0];
-            if (!first.ContainsKey("WeatherForecast")) return new ForecastPoint[0];
-            var fc = (System.Collections.ArrayList)first["WeatherForecast"];
-            var pts = new List<ForecastPoint>(fc.Count);
-            foreach (Dictionary<string, object> p in fc)
+            var root = ser.Deserialize<Dictionary<string, object>>(json);
+            if (root == null || !root.ContainsKey("results")) return new ForecastPoint[0];
+            var results = (System.Collections.ArrayList)root["results"];
+            if (results.Count == 0) return new ForecastPoint[0];
+            var first = (Dictionary<string, object>)results[0];
+            if (!first.ContainsKey("result")) return new ForecastPoint[0];
+            var resultObj = (Dictionary<string, object>)first["result"];
+            if (!resultObj.ContainsKey("value")) return new ForecastPoint[0];
+            var valueObj = (Dictionary<string, object>)resultObj["value"];
+            if (!valueObj.ContainsKey("Periods")) return new ForecastPoint[0];
+            var periods = (System.Collections.ArrayList)valueObj["Periods"];
+            var pts = new List<ForecastPoint>(periods.Count);
+            foreach (Dictionary<string, object> p in periods)
             {
                 pts.Add(new ForecastPoint
                 {
@@ -903,7 +956,7 @@ namespace WeatherPlot
 
         public LoginForm()
         {
-            Text = "Connect to Highbyte";
+            Text = "Connect to HighByte i3x";
             ClientSize = new Size(480, 380);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.FromArgb(28, 30, 38);
@@ -933,7 +986,7 @@ namespace WeatherPlot
 
             var title = new Label
             {
-                Text = "Highbyte Connection",
+                Text = "HighByte i3x Connection",
                 Font = new Font("Segoe UI Semibold", 14f),
                 ForeColor = Color.FromArgb(235, 235, 240),
                 AutoSize = true, Left = x, Top = y
@@ -943,7 +996,7 @@ namespace WeatherPlot
 
             var subtitle = new Label
             {
-                Text = "Enter the Highbyte server URL and your credentials.",
+                Text = "Server URL is the host root; the i3x API lives under /i3x/v1.",
                 ForeColor = Color.FromArgb(160, 165, 175),
                 AutoSize = true, Left = x, Top = y
             };
@@ -1117,7 +1170,7 @@ namespace WeatherPlot
             {
                 try
                 {
-                    var token = HighbyteClient.Login(url, user, pass);
+                    var token = I3xClient.Login(url, user, pass);
                     BeginInvoke((Action)(() =>
                     {
                         ResolvedUrl = url;
@@ -1460,7 +1513,7 @@ namespace WeatherPlot
                 TextAlign = ContentAlignment.MiddleRight,
                 ForeColor = Color.FromArgb(160, 165, 175),
                 Font = new Font("Segoe UI", 9f),
-                Text = "Source: Highbyte (" + HighbyteClient.DisplayBaseUrl + ")   |   Cache: weather_data.json",
+                Text = "Source: HighByte i3x (" + I3xClient.DisplayBaseUrl + "/i3x/v1)   |   Cache: weather_data.json",
             };
 
             topBar.Controls.Add(updatedLbl);
@@ -1627,8 +1680,8 @@ namespace WeatherPlot
             try
             {
                 var ts = File.GetLastWriteTime(jsonPath);
-                updatedLbl.Text = string.Format("Cached: {0:MMM d, yyyy h:mm tt}   |   Source: Highbyte ({1})",
-                    ts, HighbyteClient.DisplayBaseUrl);
+                updatedLbl.Text = string.Format("Cached: {0:MMM d, yyyy h:mm tt}   |   Source: HighByte i3x ({1}/i3x/v1)",
+                    ts, I3xClient.DisplayBaseUrl);
             }
             catch { }
         }
@@ -1662,7 +1715,7 @@ namespace WeatherPlot
             if (!refreshBtn.Enabled) return;
             refreshBtn.Enabled = false;
             refreshBtn.Text = "Refreshing...";
-            statusLbl.Text = "Contacting Highbyte at " + HighbyteClient.DisplayBaseUrl + " ...";
+            statusLbl.Text = "Contacting i3x server at " + I3xClient.DisplayBaseUrl + "/i3x/v1 ...";
 
             ThreadPool.QueueUserWorkItem(_ => RefreshWorker());
         }
@@ -1672,8 +1725,8 @@ namespace WeatherPlot
             string[] locationNames;
             try
             {
-                UiInvoke(() => statusLbl.Text = "Fetching locations (GetLocations) ...");
-                locationNames = HighbyteClient.GetLocations();
+                UiInvoke(() => statusLbl.Text = "Fetching locations (GET /i3x/v1/objects, filter parentId=Weather) ...");
+                locationNames = I3xClient.GetLocations();
             }
             catch (Exception ex)
             {
@@ -1701,7 +1754,7 @@ namespace WeatherPlot
                 try
                 {
                     UiInvoke(() => statusLbl.Text = string.Format("Fetching {0} forecast ... ({1}/{2})", name, idxCapture + 1, total));
-                    var pts = HighbyteClient.GetForecast(name);
+                    var pts = I3xClient.GetForecast(name);
                     var s = BuildSeries(name, pts, idx);
                     bool prev;
                     if (prevVis.TryGetValue(name, out prev)) s.Visible = prev;
@@ -1720,11 +1773,11 @@ namespace WeatherPlot
                     chart.SetData(results);
                     RebuildLocationDropdown();
                     try { SaveCache(results); } catch { /* non-fatal */ }
-                    updatedLbl.Text = string.Format("Refreshed: {0:MMM d, yyyy h:mm tt}   |   Source: Highbyte ({1})",
-                        DateTime.Now, HighbyteClient.DisplayBaseUrl);
+                    updatedLbl.Text = string.Format("Refreshed: {0:MMM d, yyyy h:mm tt}   |   Source: HighByte i3x ({1}/i3x/v1)",
+                        DateTime.Now, I3xClient.DisplayBaseUrl);
                 }
                 statusLbl.Text = errors.Count == 0
-                    ? string.Format("Loaded {0} locations from Highbyte.", results.Count)
+                    ? string.Format("Loaded {0} locations from i3x.", results.Count)
                     : string.Format("Loaded {0} of {1}. Errors: {2}", results.Count, total, string.Join("; ", errors.ToArray()));
                 refreshBtn.Text = "Refresh";
                 refreshBtn.Enabled = true;
@@ -1858,6 +1911,16 @@ namespace WeatherPlot
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            Application.ThreadException += (s, e) =>
+            {
+                try
+                {
+                    File.AppendAllText(Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "crash.log"),
+                        string.Format("[{0:HH:mm:ss.fff}] UNHANDLED: {1}{2}",
+                            DateTime.Now, e.Exception, Environment.NewLine));
+                }
+                catch { }
+            };
 
             // Show the connect dialog first. The user enters server URL and either credentials
             // (which we exchange via POST /data/v1/login for a bearer token) or a pre-issued
@@ -1865,7 +1928,7 @@ namespace WeatherPlot
             using (var login = new LoginForm())
             {
                 if (login.ShowDialog() != DialogResult.OK) return;
-                HighbyteClient.Configure(login.ResolvedUrl, login.ResolvedToken);
+                I3xClient.Configure(login.ResolvedUrl, login.ResolvedToken);
             }
 
             Application.Run(new MainForm());
