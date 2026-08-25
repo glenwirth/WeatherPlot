@@ -22,21 +22,21 @@ The dialog has:
 
 - **Server URL** — defaults to `http://localhost:8885`. This is the **host root**, not the i3x path. The app appends `/i3x/v1/...` to every data call. If you omit the scheme, `http://` is added automatically; trailing slashes are stripped.
 - A mode toggle:
-  - **Username & Password** — calls `POST {url}/data/v1/login` (the HighByte Data REST helper, not part of i3x itself) with `{"username":"...", "password":"..."}` and reads `access_token` from the response. That token becomes the bearer token used for all subsequent i3x calls in this session. Note: not all i3x deployments issue tokens through this path — if the returned token doesn't authorize `/i3x/v1` requests, use Bearer Token mode instead.
-  - **Bearer Token** — paste a pre-issued token directly. This is the recommended path for most i3x deployments, since the i3x standard does not itself define a login endpoint; tokens are typically provisioned server-side.
+  - **Bearer Token** *(default)* — paste a pre-issued token directly. Every subsequent request carries `Authorization: Bearer <token>`. This is the standard path for i3x deployments, since the i3x standard does not itself define a login endpoint; tokens are typically provisioned server-side.
+  - **No Auth** — send no authorization at all. The `Authorization` header is omitted from every request. Use this for open i3x servers (test/dev instances, servers running on a trusted local network without access controls). If the server actually does require auth, the first data call will surface an HTTP 401 in the toolbar status bar.
 - **Connect** / **Cancel** buttons. **Enter** triggers Connect; **Esc** triggers Cancel.
 
-Error messages appear in red below the form for invalid URL, bad credentials (HTTP 401), or the *Allow Login Authentication* setting being disabled on the server (HTTP 403, with a hint to switch to Bearer Token mode).
+Neither mode performs a server round-trip during the Connect step itself — the settings are captured and MainForm opens immediately. Any auth problems surface on the first data refresh (401 for a bad/missing token) and appear in the toolbar status bar.
 
 #### Persistence
 
 The dialog reads and writes a small `connection.json` file next to the .exe:
 
 ```json
-{ "Url": "http://localhost:8885", "Username": "admin", "UseToken": false }
+{ "Url": "http://localhost:8885", "Mode": "token" }
 ```
 
-The URL, last-used username, and last-used mode are remembered for next launch. **The password and bearer token are never saved to disk.**
+`Mode` is `"token"` (Bearer Token) or `"noauth"` (No Auth). The URL and last-used mode are remembered for next launch. **The bearer token is never saved to disk** — it is re-entered each session (or omitted entirely in No Auth mode).
 
 ---
 
@@ -151,7 +151,6 @@ The app calls three endpoints on the HighByte Intelligence Hub, one login helper
 
 | Endpoint | HTTP | Body / Notes | Returns |
 |---|---|---|---|
-| `Login` (optional) | `POST /data/v1/login` | `{"username":"...", "password":"..."}` — HighByte's proprietary REST login. Called once at startup from the Connect dialog in Username & Password mode; skipped in Bearer Token mode. | `{"access_token":"...", "token_type":"...", "expires_in":N}` |
 | Discover locations | `GET /i3x/v1/objects` | Standard i3x catalog endpoint. Returns every element in the hierarchy. Client-side filters to `parentId == "Weather"` and takes each entry's `displayName`. | `{"success":true, "result":[{"elementId":"Weather.Boston","displayName":"Boston","parentId":"Weather", ...}, ...]}` |
 | Read forecast | `POST /i3x/v1/objects/value` | Standard i3x current-value endpoint. Body: `{"elementIds":["Weather.<name>.Forecast"]}` — one call per location. | `{"success":true, "results":[{"elementId":"Weather.Boston.Forecast","result":{"value":{"Periods":[{"Time":"...", "Temperature":78, "WindSpeed":"9 mph", "WindDirection":"W", "Forecast":"Sunny"}, ...]}}}]}` |
 
@@ -178,7 +177,10 @@ Locations are discovered dynamically from the server — the app doesn't hard-co
 
 ### Authentication
 
-After the Connect dialog completes, every i3x request carries `Authorization: Bearer <token>` where `<token>` was either returned by `/data/v1/login` (Username & Password mode) or pasted in directly (Bearer Token mode). Note that the HighByte Data REST API and the i3x API often use **different tokens** on the same host — if a login-issued token gets rejected by `/i3x/v1`, switch to Bearer Token mode with an i3x-scoped token. TLS 1.2 is explicitly enabled for HTTPS deployments.
+- **Bearer Token mode:** every i3x request carries `Authorization: Bearer <token>` with the token pasted into the Connect dialog. Tokens must be provisioned server-side (see the HighByte Intelligence Hub admin UI).
+- **No Auth mode:** the `Authorization` header is omitted entirely. Suitable for open i3x servers on trusted networks; if the server actually requires auth you'll see HTTP 401 in the toolbar status bar on the first refresh.
+
+TLS 1.2 is explicitly enabled for HTTPS deployments in either mode.
 
 ### Cache (`weather_data.json`)
 
@@ -213,12 +215,10 @@ The dialog persists three settings to `connection.json` next to the .exe so the 
 | Field | Persisted? | Purpose |
 |---|---|---|
 | `Url` | yes | Pre-fills the Server URL field |
-| `Username` | yes | Pre-fills the Username field (Username & Password mode) |
-| `UseToken` | yes | Selects which radio button is active when the dialog opens |
-| Password | **never** | Re-entered each session |
+| `Mode` | yes | Selects which radio button is active when the dialog opens (`"token"` or `"noauth"`) |
 | Bearer Token | **never** | Re-entered each session |
 
-If `connection.json` is missing or corrupt, defaults (`http://localhost:8885`, empty username, Username & Password mode) are used.
+If `connection.json` is missing or corrupt, defaults (`http://localhost:8885`, Bearer Token mode) are used.
 
 ---
 
@@ -372,3 +372,4 @@ This app picked up a few hardenings during development:
 - **v9** — Connect dialog at startup (Username/Password → `/data/v1/login` for bearer token, or paste-a-token mode); `connection.json` persists URL + username + mode
 - **v10** — Export PDF button in toolbar (renders the current chart view to a PDF via `PrintDocument` + *Microsoft Print to PDF*, landscape Letter, aspect-preserved)
 - **v11** — Switched data source from HighByte proprietary REST pipelines to the vendor-neutral [i3x industrial API](https://github.com/cesmii/i3X). Locations are now discovered dynamically as children of the `Weather` root object; per-location forecasts come from `POST /i3x/v1/objects/value`. Dialog and status labels updated. `HighbyteClient` renamed `I3xClient`.
+- **v12** — Removed the Username & Password mode from the Connect dialog; replaced with a **No Auth** mode that omits the `Authorization` header entirely for open i3x servers. `connection.json` schema simplified (`Mode` string replaces `Username` + `UseToken`).

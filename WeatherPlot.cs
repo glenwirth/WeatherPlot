@@ -723,63 +723,10 @@ namespace WeatherPlot
             try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch { }
         }
 
-        // POST { username, password } to /data/v1/login and return the access_token from the response.
-        // The Highbyte login endpoint (not part of the i3x standard) is used as a convenience for
-        // servers that federate one token across both APIs; if the returned token does not
-        // authorize /i3x/v1 calls the user can switch to Bearer Token mode instead.
-        // Throws a descriptive exception on 401 (bad credentials) or 403 (login disabled).
-        public static string Login(string baseUrl, string username, string password)
-        {
-            string url = (baseUrl ?? "").TrimEnd('/') + "/data/v1/login";
-            var req = (HttpWebRequest)WebRequest.Create(url);
-            req.Method = "POST";
-            req.ContentType = "application/json";
-            req.Accept = "application/json";
-            req.Timeout = 20000;
-            req.ReadWriteTimeout = 20000;
-            string body = "{\"username\":\"" + EscapeJsonString(username ?? "") +
-                          "\",\"password\":\"" + EscapeJsonString(password ?? "") + "\"}";
-            var data = Encoding.UTF8.GetBytes(body);
-            req.ContentLength = data.Length;
-            using (var rs = req.GetRequestStream()) rs.Write(data, 0, data.Length);
-            try
-            {
-                using (var resp = (HttpWebResponse)req.GetResponse())
-                using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
-                {
-                    string json = sr.ReadToEnd();
-                    var ser = new JavaScriptSerializer { MaxJsonLength = 1024 * 1024 };
-                    var d = ser.Deserialize<Dictionary<string, object>>(json);
-                    object t;
-                    if (d != null && d.TryGetValue("access_token", out t) && t is string && !string.IsNullOrEmpty((string)t))
-                        return (string)t;
-                    throw new Exception("Server response did not contain an access_token: " + json);
-                }
-            }
-            catch (WebException wex)
-            {
-                var resp = wex.Response as HttpWebResponse;
-                if (resp != null)
-                {
-                    if ((int)resp.StatusCode == 401)
-                        throw new Exception("Invalid username or password (HTTP 401).");
-                    if ((int)resp.StatusCode == 403)
-                        throw new Exception("Login is disabled on this Highbyte server (HTTP 403). " +
-                            "Enable \"Allow Login Authentication\" in the REST Data Server settings, " +
-                            "or use the \"Bearer token\" option below with a pre-issued token.");
-                    string body2 = "";
-                    try { using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8)) body2 = sr.ReadToEnd(); }
-                    catch { }
-                    throw new Exception("Login failed (HTTP " + (int)resp.StatusCode + "). " +
-                        (string.IsNullOrEmpty(body2) ? wex.Message : body2));
-                }
-                throw new Exception("Could not reach server: " + wex.Message, wex);
-            }
-        }
-
-        // Shared request helper for both /data/v1/login (POST) and /i3x/v1/... (GET or POST).
+        // Shared request helper for all /i3x/v1/... calls (GET or POST).
         // `path` is a full path starting with '/' (e.g. "/i3x/v1/objects").
-        // For GET, pass jsonBody = null.
+        // For GET, pass jsonBody = null. When _bearerToken is empty (No Auth mode) the
+        // Authorization header is omitted entirely.
         private static string SendJson(string path, string httpMethod, string jsonBody)
         {
             var req = (HttpWebRequest)WebRequest.Create(_baseUrl + path);
@@ -897,9 +844,13 @@ namespace WeatherPlot
 
     public class ConnectionSettings
     {
+        public const string ModeToken = "token";
+        public const string ModeNoAuth = "noauth";
+
         public string Url { get; set; }
-        public string Username { get; set; }
-        public bool UseToken { get; set; }
+        // "token" or "noauth". Old configs may deserialize with Mode = null; migration in Load()
+        // normalizes that to ModeToken.
+        public string Mode { get; set; }
 
         private static string GetPath()
         {
@@ -916,7 +867,7 @@ namespace WeatherPlot
                 var s = ser.Deserialize<ConnectionSettings>(File.ReadAllText(p));
                 if (s == null) return Default();
                 if (string.IsNullOrEmpty(s.Url)) s.Url = "http://localhost:8885";
-                if (s.Username == null) s.Username = "";
+                if (s.Mode != ModeToken && s.Mode != ModeNoAuth) s.Mode = ModeToken;
                 return s;
             }
             catch { return Default(); }
@@ -924,7 +875,7 @@ namespace WeatherPlot
 
         public void Save()
         {
-            // Persist the URL and username only — never the password or bearer token.
+            // Persist the URL and chosen auth mode only — never the bearer token itself.
             try
             {
                 var ser = new JavaScriptSerializer();
@@ -935,17 +886,18 @@ namespace WeatherPlot
 
         private static ConnectionSettings Default()
         {
-            return new ConnectionSettings { Url = "http://localhost:8885", Username = "", UseToken = false };
+            return new ConnectionSettings { Url = "http://localhost:8885", Mode = ModeToken };
         }
     }
 
     public class LoginForm : Form
     {
         private TextBox urlBox;
-        private RadioButton modeCredentials;
         private RadioButton modeToken;
-        private Label userLbl, passLbl, tokenLbl;
-        private TextBox userBox, passBox, tokenBox;
+        private RadioButton modeNoAuth;
+        private Label tokenLbl;
+        private TextBox tokenBox;
+        private Label noAuthInfoLbl;
         private Button connectBtn;
         private Button cancelBtn;
         private Label statusLbl;
@@ -970,9 +922,9 @@ namespace WeatherPlot
 
             var saved = ConnectionSettings.Load();
             urlBox.Text = saved.Url;
-            userBox.Text = saved.Username;
-            modeToken.Checked = saved.UseToken;
-            modeCredentials.Checked = !saved.UseToken;
+            bool useToken = saved.Mode != ConnectionSettings.ModeNoAuth;
+            modeToken.Checked = useToken;
+            modeNoAuth.Checked = !useToken;
             UpdateModeUi();
 
             AcceptButton = connectBtn;
@@ -1015,62 +967,48 @@ namespace WeatherPlot
             Controls.Add(urlBox);
             y += 32;
 
-            modeCredentials = new RadioButton
-            {
-                Text = "Username && Password",
-                Left = x, Top = y, AutoSize = true,
-                ForeColor = Color.FromArgb(225, 230, 240),
-                BackColor = Color.FromArgb(28, 30, 38),
-            };
-            modeCredentials.CheckedChanged += (s, e) => UpdateModeUi();
-            Controls.Add(modeCredentials);
-
             modeToken = new RadioButton
             {
                 Text = "Bearer Token",
-                Left = x + 200, Top = y, AutoSize = true,
+                Left = x, Top = y, AutoSize = true,
                 ForeColor = Color.FromArgb(225, 230, 240),
                 BackColor = Color.FromArgb(28, 30, 38),
             };
             modeToken.CheckedChanged += (s, e) => UpdateModeUi();
             Controls.Add(modeToken);
+
+            modeNoAuth = new RadioButton
+            {
+                Text = "No Auth",
+                Left = x + 200, Top = y, AutoSize = true,
+                ForeColor = Color.FromArgb(225, 230, 240),
+                BackColor = Color.FromArgb(28, 30, 38),
+            };
+            modeNoAuth.CheckedChanged += (s, e) => UpdateModeUi();
+            Controls.Add(modeNoAuth);
             y += 30;
 
-            // ----- Credentials mode controls (overlap with token mode controls; visibility toggled)
-            userLbl = new Label { Text = "Username", Left = x, Top = y, AutoSize = true,
-                ForeColor = Color.FromArgb(210, 215, 225) };
-            Controls.Add(userLbl);
-            int yField = y + 18;
-            userBox = new TextBox
-            {
-                Left = x, Top = yField, Width = w,
-                BackColor = Color.FromArgb(40, 44, 52), ForeColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            Controls.Add(userBox);
-
-            passLbl = new Label { Text = "Password", Left = x, Top = yField + 32, AutoSize = true,
-                ForeColor = Color.FromArgb(210, 215, 225) };
-            Controls.Add(passLbl);
-            passBox = new TextBox
-            {
-                Left = x, Top = yField + 50, Width = w, UseSystemPasswordChar = true,
-                BackColor = Color.FromArgb(40, 44, 52), ForeColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            Controls.Add(passBox);
-
-            // ----- Token mode control (occupies the same vertical space)
-            tokenLbl = new Label { Text = "Bearer Token", Left = x, Top = y + 18, AutoSize = true,
+            // ----- Token mode controls
+            tokenLbl = new Label { Text = "Bearer Token", Left = x, Top = y, AutoSize = true,
                 ForeColor = Color.FromArgb(210, 215, 225) };
             Controls.Add(tokenLbl);
             tokenBox = new TextBox
             {
-                Left = x, Top = y + 36, Width = w, UseSystemPasswordChar = true,
+                Left = x, Top = y + 18, Width = w, UseSystemPasswordChar = true,
                 BackColor = Color.FromArgb(40, 44, 52), ForeColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle
             };
             Controls.Add(tokenBox);
+
+            // ----- No Auth mode control (occupies the same vertical space, toggled visible)
+            noAuthInfoLbl = new Label
+            {
+                Text = "No credentials will be sent.\r\nRequests to /i3x/v1 will omit the Authorization header.",
+                Left = x, Top = y, Width = w, Height = 40, AutoSize = false,
+                ForeColor = Color.FromArgb(180, 185, 195),
+                BackColor = Color.FromArgb(28, 30, 38),
+            };
+            Controls.Add(noAuthInfoLbl);
 
             statusLbl = new Label
             {
@@ -1114,13 +1052,10 @@ namespace WeatherPlot
         private void UpdateModeUi()
         {
             bool useToken = modeToken.Checked;
-            userLbl.Visible = !useToken;
-            userBox.Visible = !useToken;
-            passLbl.Visible = !useToken;
-            passBox.Visible = !useToken;
             tokenLbl.Visible = useToken;
             tokenBox.Visible = useToken;
-            ActiveControl = useToken ? (Control)tokenBox : (Control)userBox;
+            noAuthInfoLbl.Visible = !useToken;
+            ActiveControl = useToken ? (Control)tokenBox : (Control)connectBtn;
         }
 
         private void Fail(string msg)
@@ -1154,42 +1089,24 @@ namespace WeatherPlot
                 if (string.IsNullOrEmpty(token)) { Fail("Bearer token is required."); return; }
                 ResolvedUrl = url;
                 ResolvedToken = token;
-                SaveSettings(url, "", true);
+                SaveSettings(url, ConnectionSettings.ModeToken);
                 DialogResult = DialogResult.OK;
                 Close();
                 return;
             }
 
-            string user = userBox.Text ?? "";
-            string pass = passBox.Text ?? "";
-            if (string.IsNullOrEmpty(user)) { Fail("Username is required."); return; }
-            statusLbl.ForeColor = Color.FromArgb(180, 185, 195);
-            statusLbl.Text = "Contacting " + url + " ...";
-
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                try
-                {
-                    var token = I3xClient.Login(url, user, pass);
-                    BeginInvoke((Action)(() =>
-                    {
-                        ResolvedUrl = url;
-                        ResolvedToken = token;
-                        SaveSettings(url, user, false);
-                        DialogResult = DialogResult.OK;
-                        Close();
-                    }));
-                }
-                catch (Exception ex)
-                {
-                    BeginInvoke((Action)(() => Fail(ex.Message)));
-                }
-            });
+            // No Auth mode: no token, no server round-trip. First real API call will surface any
+            // 401 from the server if it does actually require auth.
+            ResolvedUrl = url;
+            ResolvedToken = "";
+            SaveSettings(url, ConnectionSettings.ModeNoAuth);
+            DialogResult = DialogResult.OK;
+            Close();
         }
 
-        private void SaveSettings(string url, string user, bool useToken)
+        private void SaveSettings(string url, string mode)
         {
-            new ConnectionSettings { Url = url, Username = user ?? "", UseToken = useToken }.Save();
+            new ConnectionSettings { Url = url, Mode = mode }.Save();
         }
     }
 
