@@ -2,16 +2,47 @@
   "productInfo" : {
     "company" : "HighByte",
     "product" : "IntelligenceHub",
-    "version" : "4.4.1",
-    "build" : "2026.4.14.7",
+    "version" : "4.5.0",
+    "build" : "2026.8.14.399",
     "stage" : "Release"
   },
   "project" : {
-    "version" : 13,
+    "version" : 14,
     "connections" : [ {
+      "name" : "NOAA_RestAPI",
+      "uri" : "rest.client://Weather",
+      "tags" : [ "WeatherPlot" ],
+      "writes" : {
+        "flattenModeledValues" : false
+      },
+      "writeThrottle" : {
+        "enabled" : false,
+        "maxBatchSizePerTarget" : 1000,
+        "batchDelay" : {
+          "duration" : 20,
+          "units" : "Milliseconds"
+        }
+      },
+      "subscriptions" : { },
+      "storeForward" : {
+        "enabled" : false,
+        "maxEntries" : 100,
+        "waitOnFailureInterval" : {
+          "duration" : 1,
+          "units" : "Seconds"
+        }
+      },
+      "settings" : {
+        "authentication" : {
+          "type" : "None",
+          "options" : { }
+        },
+        "baseURL" : "https://forecast.weather.gov/"
+      }
+    }, {
       "name" : "Weather_MQTT",
       "uri" : "mqtt://localhost:1885",
-      "tags" : [ "Weather" ],
+      "tags" : [ "WeatherPlot" ],
       "writes" : {
         "flattenModeledValues" : false
       },
@@ -41,12 +72,13 @@
         "redundantBrokers" : [ ],
         "maxInflight" : 1000,
         "inputDiscovery" : "#",
-        "mcpEnabled" : "enabled"
+        "mcpEnabled" : "enabled",
+        "maxMessagesReceived" : 0
       }
     }, {
       "name" : "Weather_RestAPI",
       "uri" : "rest.client://Weather",
-      "tags" : [ "Weather" ],
+      "tags" : [ "WeatherPlot" ],
       "writes" : {
         "flattenModeledValues" : false
       },
@@ -76,6 +108,32 @@
       }
     } ],
     "inputs" : [ {
+      "name" : "PortlandWeather",
+      "connection" : "NOAA_RestAPI",
+      "type" : "rest.client",
+      "qualifier" : {
+        "acceptType" : "*/*",
+        "method" : "GET",
+        "contentType" : "application/json",
+        "includeMetadata" : false,
+        "endpointURL" : "MapClick.php?lat=43.6894&lon=-70.2865&FcstType=digitalDWML",
+        "isFile" : false
+      },
+      "cacheLifetime" : {
+        "enabled" : true,
+        "interval" : {
+          "duration" : 15,
+          "units" : "Minutes"
+        }
+      },
+      "template" : {
+        "type" : "Off"
+      },
+      "referenceMap" : [ ],
+      "parameters" : {
+        "type" : "EmptyParameters"
+      }
+    }, {
       "name" : "Forecast",
       "connection" : "Weather_MQTT",
       "type" : "mqtt",
@@ -93,6 +151,7 @@
       "template" : {
         "type" : "Off"
       },
+      "referenceMap" : [ ],
       "parameters" : {
         "type" : "inline",
         "model" : {
@@ -104,8 +163,11 @@
             "nullable" : false,
             "required" : false,
             "array" : false,
-            "internalType" : "String"
-          } ]
+            "internalType" : {
+              "variant" : "String"
+            }
+          } ],
+          "modelVersion" : ""
         }
       }
     }, {
@@ -127,6 +189,7 @@
       "template" : {
         "type" : "Off"
       },
+      "referenceMap" : [ ],
       "parameters" : {
         "type" : "inline",
         "model" : {
@@ -139,7 +202,9 @@
             "required" : false,
             "array" : false,
             "defaultValue" : "{{this.Long}}",
-            "internalType" : "String"
+            "internalType" : {
+              "variant" : "String"
+            }
           }, {
             "attributeType" : "Internal",
             "name" : "Lat",
@@ -147,8 +212,11 @@
             "required" : false,
             "array" : false,
             "defaultValue" : "{{this.Lat}}",
-            "internalType" : "String"
-          } ]
+            "internalType" : {
+              "variant" : "String"
+            }
+          } ],
+          "modelVersion" : ""
         }
       }
     }, {
@@ -170,6 +238,7 @@
       "template" : {
         "type" : "Off"
       },
+      "referenceMap" : [ ],
       "parameters" : {
         "type" : "inline",
         "model" : {
@@ -182,7 +251,9 @@
             "required" : false,
             "array" : false,
             "defaultValue" : "{{this.gridX}}",
-            "internalType" : "String"
+            "internalType" : {
+              "variant" : "String"
+            }
           }, {
             "attributeType" : "Internal",
             "name" : "gridY",
@@ -190,7 +261,9 @@
             "required" : false,
             "array" : false,
             "defaultValue" : "{{this.gridY}}",
-            "internalType" : "String"
+            "internalType" : {
+              "variant" : "String"
+            }
           }, {
             "attributeType" : "Internal",
             "name" : "gridId",
@@ -198,34 +271,151 @@
             "required" : false,
             "array" : false,
             "defaultValue" : "{{this.gridId}}",
-            "internalType" : "String"
-          } ]
+            "internalType" : {
+              "variant" : "String"
+            }
+          } ],
+          "modelVersion" : ""
         }
       }
     } ],
     "outputs" : [ ],
     "modeling" : {
       "models" : [ {
+        "name" : "Current",
+        "description" : "Created from forecast JSON.",
+        "tags" : [ "WeatherPlot" ],
+        "attributes" : [ {
+          "attributeType" : "Internal",
+          "name" : "Time",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "String"
+          }
+        }, {
+          "attributeType" : "Internal",
+          "name" : "Temperature",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "Int64"
+          }
+        }, {
+          "attributeType" : "Internal",
+          "name" : "WindSpeed",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "String"
+          }
+        }, {
+          "attributeType" : "Internal",
+          "name" : "WindDirection",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "String"
+          }
+        }, {
+          "attributeType" : "Internal",
+          "name" : "Forecast",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "String"
+          }
+        } ],
+        "modelVersion" : ""
+      }, {
+        "name" : "Forecast",
+        "description" : "Created from forecast JSON.",
+        "tags" : [ "WeatherPlot" ],
+        "attributes" : [ {
+          "attributeType" : "Object",
+          "name" : "Periods",
+          "nullable" : false,
+          "required" : false,
+          "array" : true,
+          "attributes" : [ {
+            "attributeType" : "Internal",
+            "name" : "Time",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "internalType" : {
+              "variant" : "String"
+            }
+          }, {
+            "attributeType" : "Internal",
+            "name" : "Temperature",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "internalType" : {
+              "variant" : "Int64"
+            }
+          }, {
+            "attributeType" : "Internal",
+            "name" : "WindSpeed",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "internalType" : {
+              "variant" : "String"
+            }
+          }, {
+            "attributeType" : "Internal",
+            "name" : "WindDirection",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "internalType" : {
+              "variant" : "String"
+            }
+          }, {
+            "attributeType" : "Internal",
+            "name" : "Forecast",
+            "nullable" : false,
+            "required" : false,
+            "array" : false,
+            "internalType" : {
+              "variant" : "String"
+            }
+          } ]
+        } ],
+        "modelVersion" : ""
+      }, {
         "name" : "Position",
-        "tags" : [ "Weather" ],
+        "tags" : [ "WeatherPlot" ],
         "attributes" : [ {
           "attributeType" : "Internal",
           "name" : "Latitude",
           "nullable" : false,
           "required" : false,
           "array" : false,
-          "internalType" : "Any"
+          "internalType" : {
+            "variant" : "Any"
+          }
         }, {
           "attributeType" : "Internal",
           "name" : "Longitude",
           "nullable" : false,
           "required" : false,
           "array" : false,
-          "internalType" : "Any"
-        } ]
+          "internalType" : {
+            "variant" : "Any"
+          }
+        } ],
+        "modelVersion" : ""
       }, {
         "name" : "Weather",
-        "tags" : [ "Weather" ],
+        "tags" : [ "WeatherPlot" ],
         "attributes" : [ {
           "attributeType" : "Modeled",
           "name" : "CurrentWeather",
@@ -240,50 +430,328 @@
           "required" : false,
           "array" : true,
           "model" : "WeatherPeriod"
-        } ]
+        } ],
+        "modelVersion" : ""
       }, {
-        "name" : "WeatherPeriod",
-        "tags" : [ "Weather" ],
+        "name" : "WeatherForecast",
+        "description" : "Created from forecast JSON.",
+        "tags" : [ "WeatherPlot" ],
         "attributes" : [ {
           "attributeType" : "Internal",
           "name" : "Time",
           "nullable" : false,
           "required" : false,
           "array" : false,
-          "internalType" : "Any"
+          "internalType" : {
+            "variant" : "String"
+          }
         }, {
           "attributeType" : "Internal",
           "name" : "Temperature",
           "nullable" : false,
           "required" : false,
           "array" : false,
-          "internalType" : "Any"
+          "internalType" : {
+            "variant" : "Int64"
+          }
         }, {
           "attributeType" : "Internal",
           "name" : "WindSpeed",
           "nullable" : false,
           "required" : false,
           "array" : false,
-          "internalType" : "Any"
+          "internalType" : {
+            "variant" : "String"
+          }
         }, {
           "attributeType" : "Internal",
           "name" : "WindDirection",
           "nullable" : false,
           "required" : false,
           "array" : false,
-          "internalType" : "Any"
+          "internalType" : {
+            "variant" : "String"
+          }
         }, {
           "attributeType" : "Internal",
           "name" : "Forecast",
           "nullable" : false,
           "required" : false,
           "array" : false,
-          "internalType" : "Any"
-        } ]
+          "internalType" : {
+            "variant" : "String"
+          }
+        } ],
+        "modelVersion" : ""
+      }, {
+        "name" : "WeatherPeriod",
+        "tags" : [ "WeatherPlot" ],
+        "attributes" : [ {
+          "attributeType" : "Internal",
+          "name" : "Time",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "Any"
+          }
+        }, {
+          "attributeType" : "Internal",
+          "name" : "Temperature",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "Any"
+          }
+        }, {
+          "attributeType" : "Internal",
+          "name" : "WindSpeed",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "Any"
+          }
+        }, {
+          "attributeType" : "Internal",
+          "name" : "WindDirection",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "Any"
+          }
+        }, {
+          "attributeType" : "Internal",
+          "name" : "Forecast",
+          "nullable" : false,
+          "required" : false,
+          "array" : false,
+          "internalType" : {
+            "variant" : "Any"
+          }
+        } ],
+        "modelVersion" : ""
       } ],
       "instances" : [ {
+        "name" : "Current_Instance",
+        "tags" : [ "WeatherPlot" ],
+        "model" : "Current",
+        "rootValueAs" : "Object",
+        "template" : {
+          "type" : "Off"
+        },
+        "executeMode" : "V4",
+        "initExpression" : "",
+        "attributes" : [ {
+          "name" : "Time",
+          "expression" : {
+            "type" : "Reference",
+            "reference" : {
+              "type" : "Input",
+              "name" : "Topic",
+              "path" : ".CurrentWeather.Time",
+              "params" : {
+                "Topic" : "Weather/{{this.Location}}"
+              },
+              "connectionName" : "AMRsAndProductionLine_MQTT"
+            }
+          }
+        }, {
+          "name" : "Temperature",
+          "expression" : {
+            "type" : "Reference",
+            "reference" : {
+              "type" : "Input",
+              "name" : "Topic",
+              "path" : ".CurrentWeather.Temperature",
+              "params" : {
+                "Topic" : "Weather/{{this.Location}}"
+              },
+              "connectionName" : "AMRsAndProductionLine_MQTT"
+            }
+          }
+        }, {
+          "name" : "WindSpeed",
+          "expression" : {
+            "type" : "Reference",
+            "reference" : {
+              "type" : "Input",
+              "name" : "Topic",
+              "path" : ".CurrentWeather.WindSpeed",
+              "params" : {
+                "Topic" : "Weather/{{this.Location}}"
+              },
+              "connectionName" : "AMRsAndProductionLine_MQTT"
+            }
+          }
+        }, {
+          "name" : "WindDirection",
+          "expression" : {
+            "type" : "Reference",
+            "reference" : {
+              "type" : "Input",
+              "name" : "Topic",
+              "path" : ".CurrentWeather.WindDirection",
+              "params" : {
+                "Topic" : "Weather/{{this.Location}}"
+              },
+              "connectionName" : "AMRsAndProductionLine_MQTT"
+            }
+          }
+        }, {
+          "name" : "Forecast",
+          "expression" : {
+            "type" : "Reference",
+            "reference" : {
+              "type" : "Input",
+              "name" : "Topic",
+              "path" : ".CurrentWeather.Forecast",
+              "params" : {
+                "Topic" : "Weather/{{this.Location}}"
+              },
+              "connectionName" : "AMRsAndProductionLine_MQTT"
+            }
+          }
+        } ],
+        "parameters" : {
+          "type" : "inline",
+          "model" : {
+            "name" : "params",
+            "tags" : [ ],
+            "attributes" : [ {
+              "attributeType" : "Internal",
+              "name" : "Location",
+              "nullable" : false,
+              "required" : false,
+              "array" : false,
+              "defaultValue" : "Boston",
+              "internalType" : {
+                "variant" : "String"
+              }
+            } ],
+            "modelVersion" : ""
+          }
+        }
+      }, {
+        "name" : "Forecast_Instance",
+        "tags" : [ "WeatherPlot" ],
+        "model" : "Forecast",
+        "rootValueAs" : "Object",
+        "template" : {
+          "type" : "Off"
+        },
+        "executeMode" : "V4",
+        "initExpression" : "",
+        "attributes" : [ {
+          "name" : "Periods",
+          "expression" : {
+            "type" : "Reference",
+            "reference" : {
+              "type" : "Input",
+              "name" : "Topic",
+              "path" : ".WeatherForecast[]",
+              "params" : {
+                "Topic" : "Weather/{{this.Location}}"
+              },
+              "connectionName" : "AMRsAndProductionLine_MQTT"
+            }
+          },
+          "attributes" : [ {
+            "name" : "Time",
+            "expression" : {
+              "type" : "Reference",
+              "reference" : {
+                "type" : "Input",
+                "name" : "Topic",
+                "path" : ".WeatherForecast[0].Time",
+                "params" : {
+                  "Topic" : null
+                },
+                "connectionName" : "AMRsAndProductionLine_MQTT"
+              }
+            }
+          }, {
+            "name" : "Temperature",
+            "expression" : {
+              "type" : "Reference",
+              "reference" : {
+                "type" : "Input",
+                "name" : "Topic",
+                "path" : ".WeatherForecast[0].Temperature",
+                "params" : {
+                  "Topic" : null
+                },
+                "connectionName" : "AMRsAndProductionLine_MQTT"
+              }
+            }
+          }, {
+            "name" : "WindSpeed",
+            "expression" : {
+              "type" : "Reference",
+              "reference" : {
+                "type" : "Input",
+                "name" : "Topic",
+                "path" : ".WeatherForecast[0].WindSpeed",
+                "params" : {
+                  "Topic" : null
+                },
+                "connectionName" : "AMRsAndProductionLine_MQTT"
+              }
+            }
+          }, {
+            "name" : "WindDirection",
+            "expression" : {
+              "type" : "Reference",
+              "reference" : {
+                "type" : "Input",
+                "name" : "Topic",
+                "path" : ".WeatherForecast[0].WindDirection",
+                "params" : {
+                  "Topic" : null
+                },
+                "connectionName" : "AMRsAndProductionLine_MQTT"
+              }
+            }
+          }, {
+            "name" : "Forecast",
+            "expression" : {
+              "type" : "Reference",
+              "reference" : {
+                "type" : "Input",
+                "name" : "Topic",
+                "path" : ".WeatherForecast[0].Forecast",
+                "params" : {
+                  "Topic" : null
+                },
+                "connectionName" : "AMRsAndProductionLine_MQTT"
+              }
+            }
+          } ]
+        } ],
+        "parameters" : {
+          "type" : "inline",
+          "model" : {
+            "name" : "params",
+            "tags" : [ ],
+            "attributes" : [ {
+              "attributeType" : "Internal",
+              "name" : "Location",
+              "nullable" : false,
+              "required" : false,
+              "array" : false,
+              "defaultValue" : "Boston",
+              "internalType" : {
+                "variant" : "String"
+              }
+            } ],
+            "modelVersion" : ""
+          }
+        }
+      }, {
         "name" : "Position_Instance",
-        "tags" : [ "Weather" ],
+        "tags" : [ "WeatherPlot" ],
         "model" : "Position",
         "rootValueAs" : "Object",
         "template" : {
@@ -315,15 +783,20 @@
               "nullable" : false,
               "required" : false,
               "array" : false,
-              "internalType" : "String"
+              "internalType" : {
+                "variant" : "String"
+              }
             }, {
               "attributeType" : "Internal",
               "name" : "Longitude",
               "nullable" : false,
               "required" : false,
               "array" : false,
-              "internalType" : "String"
-            } ]
+              "internalType" : {
+                "variant" : "String"
+              }
+            } ],
+            "modelVersion" : ""
           }
         }
       } ]
@@ -331,11 +804,11 @@
     "conditions" : [ ],
     "functions" : [ ],
     "tags" : [ {
-      "name" : "Weather"
+      "name" : "WeatherPlot"
     } ],
     "pipelines" : [ {
       "name" : "GetForecastForLocation",
-      "tags" : [ "Weather" ],
+      "tags" : [ "WeatherPlot" ],
       "inputStages" : [ "SmartQuery" ],
       "stages" : [ {
         "name" : "SmartQuery",
@@ -357,7 +830,9 @@
               "delim" : "."
             }
           },
-          "breakup" : false
+          "breakup" : false,
+          "handleGoodNoData" : false,
+          "goodNoDataOutputs" : [ ]
         },
         "outputs" : [ "Return" ]
       }, {
@@ -375,6 +850,7 @@
         "outputs" : [ ]
       } ],
       "trackActivity" : true,
+      "queueSize" : 10000,
       "triggers" : [ {
         "name" : "APITrigger",
         "display" : {
@@ -398,8 +874,11 @@
                 "nullable" : false,
                 "required" : false,
                 "array" : false,
-                "internalType" : "String"
-              } ]
+                "internalType" : {
+                  "variant" : "String"
+                }
+              } ],
+              "modelVersion" : ""
             }
           }
         }
@@ -409,7 +888,7 @@
       }
     }, {
       "name" : "GetHourlyForecast",
-      "tags" : [ "Weather" ],
+      "tags" : [ "WeatherPlot" ],
       "inputStages" : [ "SmartQuery" ],
       "stages" : [ {
         "name" : "ReadURL",
@@ -432,7 +911,9 @@
               "Lat" : "{{event.value.Position.Latitude}}"
             },
             "connectionName" : "Weather_RestAPI"
-          }
+          },
+          "handleGoodNoData" : false,
+          "goodNoDataOutputs" : [ ]
         },
         "outputs" : [ "Grids" ]
       }, {
@@ -448,6 +929,8 @@
           "type" : ".DynamicWriteConfig",
           "failureOutputs" : [ ],
           "connectionReference" : "{{Connection.Weather_MQTT}}",
+          "eventPath" : "",
+          "connectionType" : "mqtt",
           "qualifier" : {
             "qos" : 0,
             "namedRoot" : false,
@@ -538,7 +1021,8 @@
               "type" : "JavaScript",
               "expression" : "return event.metadata.Periods.properties.periods[0].shortForecast;"
             }
-          } ]
+          } ],
+          "expandArray" : false
         },
         "outputs" : [ "CurrentWeather" ]
       }, {
@@ -629,7 +1113,8 @@
                 "stageReference" : ""
               }
             } ]
-          } ]
+          } ],
+          "expandArray" : false
         },
         "outputs" : [ "Weather_MQTT" ]
       }, {
@@ -693,7 +1178,9 @@
               "gridId" : "{{event.value.properties.gridId}}"
             },
             "connectionName" : "Weather_RestAPI"
-          }
+          },
+          "handleGoodNoData" : false,
+          "goodNoDataOutputs" : [ ]
         },
         "outputs" : [ "Properties" ]
       }, {
@@ -716,7 +1203,9 @@
               "delim" : "\\"
             }
           },
-          "breakup" : false
+          "breakup" : false,
+          "handleGoodNoData" : false,
+          "goodNoDataOutputs" : [ ]
         },
         "outputs" : [ "Locations" ]
       }, {
@@ -824,7 +1313,8 @@
               "type" : "JavaScript",
               "expression" : "return event.value.shortForecast;"
             }
-          } ]
+          } ],
+          "expandArray" : false
         },
         "outputs" : [ "Return" ]
       }, {
@@ -845,6 +1335,7 @@
         "outputs" : [ ]
       } ],
       "trackActivity" : true,
+      "queueSize" : 10000,
       "triggers" : [ {
         "name" : "CronTrigger",
         "display" : {
@@ -885,7 +1376,7 @@
       }
     }, {
       "name" : "GetLocations",
-      "tags" : [ "Weather" ],
+      "tags" : [ "WeatherPlot" ],
       "inputStages" : [ "SmartQuery" ],
       "stages" : [ {
         "name" : "SmartQuery",
@@ -907,7 +1398,9 @@
               "delim" : "."
             }
           },
-          "breakup" : false
+          "breakup" : false,
+          "handleGoodNoData" : false,
+          "goodNoDataOutputs" : [ ]
         },
         "outputs" : [ "GetLocation" ]
       }, {
@@ -939,6 +1432,7 @@
         "outputs" : [ ]
       } ],
       "trackActivity" : true,
+      "queueSize" : 10000,
       "triggers" : [ {
         "name" : "APITrigger",
         "display" : {
@@ -964,6 +1458,7 @@
       "type" : "local",
       "id" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
       "name" : "Weather",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Empty"
       }
@@ -972,6 +1467,7 @@
       "id" : "5f79adce-1cdb-4518-88fd-f1b47103c255",
       "name" : "Boston",
       "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Empty"
       }
@@ -980,6 +1476,7 @@
       "id" : "e12f7aa6-f363-4716-96ce-4de4c47b9882",
       "name" : "Position",
       "parentNamespaceId" : "5f79adce-1cdb-4518-88fd-f1b47103c255",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Instance",
         "name" : "Position_Instance",
@@ -991,23 +1488,38 @@
       }
     }, {
       "type" : "local",
-      "id" : "455f5cb7-3f36-400c-9cf0-cca38db23a77",
-      "name" : "Forecast",
+      "id" : "6e6b1f4b-603b-4604-b406-11e386e313d7",
+      "name" : "Current",
       "parentNamespaceId" : "5f79adce-1cdb-4518-88fd-f1b47103c255",
+      "metadata" : [ ],
       "reference" : {
-        "type" : "Input",
-        "name" : "Forecast",
+        "type" : "Instance",
+        "name" : "Current_Instance",
         "path" : "",
         "params" : {
           "Location" : "Boston"
-        },
-        "connectionName" : "Weather_MQTT"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "455f5cb7-3f36-400c-9cf0-cca38db23a77",
+      "name" : "Forecast",
+      "parentNamespaceId" : "5f79adce-1cdb-4518-88fd-f1b47103c255",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Forecast_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "Boston"
+        }
       }
     }, {
       "type" : "local",
       "id" : "5111d2f3-f23c-4b21-adf8-f9302218f4cf",
       "name" : "Hollywood",
       "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Empty"
       }
@@ -1016,6 +1528,7 @@
       "id" : "55360b5e-aac5-45be-a632-6650a51b9c6c",
       "name" : "Position",
       "parentNamespaceId" : "5111d2f3-f23c-4b21-adf8-f9302218f4cf",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Instance",
         "name" : "Position_Instance",
@@ -1027,23 +1540,38 @@
       }
     }, {
       "type" : "local",
+      "id" : "83a8f1fd-9182-410f-a0d7-dade9fb76318",
+      "name" : "Current",
+      "parentNamespaceId" : "5111d2f3-f23c-4b21-adf8-f9302218f4cf",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Current_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "Boston"
+        }
+      }
+    }, {
+      "type" : "local",
       "id" : "5fe21b9b-03ab-47f2-9278-7cc7a73057bc",
       "name" : "Forecast",
       "parentNamespaceId" : "5111d2f3-f23c-4b21-adf8-f9302218f4cf",
+      "metadata" : [ ],
       "reference" : {
-        "type" : "Input",
-        "name" : "Forecast",
+        "type" : "Instance",
+        "name" : "Forecast_Instance",
         "path" : "",
         "params" : {
           "Location" : "Hollywood"
-        },
-        "connectionName" : "Weather_MQTT"
+        }
       }
     }, {
       "type" : "local",
       "id" : "6ec3b689-ee5c-41e9-bf19-d91490ecbee4",
       "name" : "MtWashington",
       "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Empty"
       }
@@ -1052,6 +1580,7 @@
       "id" : "de726d98-44b2-4579-9957-3566076df22f",
       "name" : "Position",
       "parentNamespaceId" : "6ec3b689-ee5c-41e9-bf19-d91490ecbee4",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Instance",
         "name" : "Position_Instance",
@@ -1067,20 +1596,35 @@
       "id" : "3326c0bd-ee54-4638-9d60-01a32c37c986",
       "name" : "Forecast",
       "parentNamespaceId" : "6ec3b689-ee5c-41e9-bf19-d91490ecbee4",
+      "metadata" : [ ],
       "reference" : {
-        "type" : "Input",
-        "name" : "Forecast",
+        "type" : "Instance",
+        "name" : "Forecast_Instance",
         "path" : "",
         "params" : {
           "Location" : "MtWashington"
-        },
-        "connectionName" : "Weather_MQTT"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "542da204-d6de-4a76-859b-3af8887645da",
+      "name" : "Current",
+      "parentNamespaceId" : "3326c0bd-ee54-4638-9d60-01a32c37c986",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Current_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "MtWashington"
+        }
       }
     }, {
       "type" : "local",
       "id" : "51e6b7f4-46de-4917-9985-948b369d333e",
       "name" : "Portland",
       "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Empty"
       }
@@ -1089,6 +1633,7 @@
       "id" : "8e8b4c9e-f614-44b3-8bf5-1d56e7d9b3c8",
       "name" : "Position",
       "parentNamespaceId" : "51e6b7f4-46de-4917-9985-948b369d333e",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Instance",
         "name" : "Position_Instance",
@@ -1104,28 +1649,47 @@
       "id" : "13a2d4ad-0ceb-403f-86bb-1285f9058897",
       "name" : "Forecast",
       "parentNamespaceId" : "51e6b7f4-46de-4917-9985-948b369d333e",
+      "metadata" : [ ],
       "reference" : {
-        "type" : "Input",
-        "name" : "Forecast",
+        "type" : "Instance",
+        "name" : "Forecast_Instance",
         "path" : "",
         "params" : {
           "Location" : "Portland"
-        },
-        "connectionName" : "Weather_MQTT"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "bd8b3cdd-023f-4939-aa78-e31f52af10e5",
+      "name" : "Current",
+      "parentNamespaceId" : "51e6b7f4-46de-4917-9985-948b369d333e",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Current_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "MtWashington"
+        }
       }
     }, {
       "type" : "local",
       "id" : "eabdacfe-00dd-4155-b38e-d8776a09dc40",
       "name" : "Pittsburgh",
       "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "metadata" : [ ],
       "reference" : {
-        "type" : "Empty"
+        "type" : "Instance",
+        "name" : "Forecast_Instance",
+        "path" : "",
+        "params" : { }
       }
     }, {
       "type" : "local",
       "id" : "76dbe7fd-52f1-48e4-8c07-e8d3371d2021",
       "name" : "Position",
       "parentNamespaceId" : "eabdacfe-00dd-4155-b38e-d8776a09dc40",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Instance",
         "name" : "Position_Instance",
@@ -1141,20 +1705,35 @@
       "id" : "98d9295e-147b-4eb4-bc78-af251ce54bcb",
       "name" : "Forecast",
       "parentNamespaceId" : "eabdacfe-00dd-4155-b38e-d8776a09dc40",
+      "metadata" : [ ],
       "reference" : {
-        "type" : "Input",
-        "name" : "Forecast",
+        "type" : "Instance",
+        "name" : "Forecast_Instance",
         "path" : "",
         "params" : {
           "Location" : "Pittsburgh"
-        },
-        "connectionName" : "Weather_MQTT"
+        }
+      }
+    }, {
+      "type" : "local",
+      "id" : "a0811846-4e5a-4f0a-bffe-622d7505bf91",
+      "name" : "Current",
+      "parentNamespaceId" : "eabdacfe-00dd-4155-b38e-d8776a09dc40",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Current_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "Pittsburgh"
+        }
       }
     }, {
       "type" : "local",
       "id" : "855686e6-5236-492e-8b4e-c9f40c0cad8d",
       "name" : "Savannah",
       "parentNamespaceId" : "282b5110-29fe-4cce-9f86-0f1c48d4ecff",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Empty"
       }
@@ -1163,6 +1742,7 @@
       "id" : "7a5b762e-5db0-46d5-be3b-1834d224d06c",
       "name" : "Position",
       "parentNamespaceId" : "855686e6-5236-492e-8b4e-c9f40c0cad8d",
+      "metadata" : [ ],
       "reference" : {
         "type" : "Instance",
         "name" : "Position_Instance",
@@ -1175,19 +1755,44 @@
       }
     }, {
       "type" : "local",
-      "id" : "9b0c2158-5eb6-47ad-9664-7d9546e60c78",
-      "name" : "Forecast",
+      "id" : "88a43be5-3823-4069-a983-0c89d87a1137",
+      "name" : "Current",
       "parentNamespaceId" : "855686e6-5236-492e-8b4e-c9f40c0cad8d",
+      "metadata" : [ ],
       "reference" : {
-        "type" : "Input",
-        "name" : "Forecast",
+        "type" : "Instance",
+        "name" : "Current_Instance",
         "path" : "",
         "params" : {
           "Location" : "Savannah"
-        },
-        "connectionName" : "Weather_MQTT"
+        }
       }
-    } ]
+    }, {
+      "type" : "local",
+      "id" : "9b0c2158-5eb6-47ad-9664-7d9546e60c78",
+      "name" : "Forecast",
+      "parentNamespaceId" : "855686e6-5236-492e-8b4e-c9f40c0cad8d",
+      "metadata" : [ ],
+      "reference" : {
+        "type" : "Instance",
+        "name" : "Forecast_Instance",
+        "path" : "",
+        "params" : {
+          "Location" : "Savannah"
+        }
+      }
+    } ],
+    "lookupMap" : [ ],
+    "servers" : {
+      "i3x" : {
+        "historyReadPipeline" : {
+          "type" : "Empty"
+        },
+        "writePipeline" : {
+          "type" : "Empty"
+        }
+      }
+    }
   },
   "network" : {
     "groups" : [ ],
