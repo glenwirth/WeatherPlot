@@ -6,6 +6,7 @@ using System.Drawing.Printing;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -852,6 +853,17 @@ namespace WeatherPlot
         // normalizes that to ModeToken.
         public string Mode { get; set; }
 
+        // The bearer token, protected at rest with Windows DPAPI
+        // (DataProtectionScope.CurrentUser + base64). Only the same Windows user on the same
+        // machine can decrypt it — copying connection.json elsewhere yields an empty token.
+        // Serialized to disk; never contains plaintext.
+        public string TokenProtected { get; set; }
+
+        // Not serialized. Populated by Load() from TokenProtected, consumed by the LoginForm
+        // to pre-populate the token field. Assigned before Save() to update the persisted value.
+        [ScriptIgnore]
+        public string PlainToken { get; set; }
+
         private static string GetPath()
         {
             return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "connection.json");
@@ -868,6 +880,7 @@ namespace WeatherPlot
                 if (s == null) return Default();
                 if (string.IsNullOrEmpty(s.Url)) s.Url = "http://localhost:8885";
                 if (s.Mode != ModeToken && s.Mode != ModeNoAuth) s.Mode = ModeToken;
+                s.PlainToken = Unprotect(s.TokenProtected);
                 return s;
             }
             catch { return Default(); }
@@ -875,9 +888,11 @@ namespace WeatherPlot
 
         public void Save()
         {
-            // Persist the URL and chosen auth mode only — never the bearer token itself.
+            // Refresh TokenProtected from the current PlainToken before serializing so the
+            // persisted file always reflects the last-committed value from the dialog.
             try
             {
+                this.TokenProtected = Protect(this.PlainToken);
                 var ser = new JavaScriptSerializer();
                 File.WriteAllText(GetPath(), ser.Serialize(this), new UTF8Encoding(false));
             }
@@ -886,7 +901,31 @@ namespace WeatherPlot
 
         private static ConnectionSettings Default()
         {
-            return new ConnectionSettings { Url = "http://localhost:8885", Mode = ModeToken };
+            return new ConnectionSettings { Url = "http://localhost:8885", Mode = ModeToken, PlainToken = "" };
+        }
+
+        private static string Protect(string plain)
+        {
+            if (string.IsNullOrEmpty(plain)) return "";
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(plain);
+                var enc = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+                return Convert.ToBase64String(enc);
+            }
+            catch { return ""; }
+        }
+
+        private static string Unprotect(string b64)
+        {
+            if (string.IsNullOrEmpty(b64)) return "";
+            try
+            {
+                var enc = Convert.FromBase64String(b64);
+                var bytes = ProtectedData.Unprotect(enc, null, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(bytes);
+            }
+            catch { return ""; }
         }
     }
 
@@ -922,6 +961,7 @@ namespace WeatherPlot
 
             var saved = ConnectionSettings.Load();
             urlBox.Text = saved.Url;
+            tokenBox.Text = saved.PlainToken ?? "";
             bool useToken = saved.Mode != ConnectionSettings.ModeNoAuth;
             modeToken.Checked = useToken;
             modeNoAuth.Checked = !useToken;
@@ -1089,24 +1129,33 @@ namespace WeatherPlot
                 if (string.IsNullOrEmpty(token)) { Fail("Bearer token is required."); return; }
                 ResolvedUrl = url;
                 ResolvedToken = token;
-                SaveSettings(url, ConnectionSettings.ModeToken);
+                // Save the token as well so it survives across launches. If it changed since load,
+                // this is where the persisted copy gets updated.
+                SaveSettings(url, ConnectionSettings.ModeToken, token);
                 DialogResult = DialogResult.OK;
                 Close();
                 return;
             }
 
             // No Auth mode: no token, no server round-trip. First real API call will surface any
-            // 401 from the server if it does actually require auth.
+            // 401 from the server if it does actually require auth. We still preserve any
+            // previously-saved token by writing back tokenBox.Text (which was pre-populated on
+            // load and is not user-editable in this mode).
             ResolvedUrl = url;
             ResolvedToken = "";
-            SaveSettings(url, ConnectionSettings.ModeNoAuth);
+            SaveSettings(url, ConnectionSettings.ModeNoAuth, (tokenBox.Text ?? "").Trim());
             DialogResult = DialogResult.OK;
             Close();
         }
 
-        private void SaveSettings(string url, string mode)
+        private void SaveSettings(string url, string mode, string plainToken)
         {
-            new ConnectionSettings { Url = url, Mode = mode }.Save();
+            new ConnectionSettings
+            {
+                Url = url,
+                Mode = mode,
+                PlainToken = plainToken ?? "",
+            }.Save();
         }
     }
 

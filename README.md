@@ -33,10 +33,23 @@ Neither mode performs a server round-trip during the Connect step itself — the
 The dialog reads and writes a small `connection.json` file next to the .exe:
 
 ```json
-{ "Url": "http://localhost:8885", "Mode": "token" }
+{
+  "Url": "http://localhost:8885",
+  "Mode": "token",
+  "TokenProtected": "AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA...(base64)..."
+}
 ```
 
-`Mode` is `"token"` (Bearer Token) or `"noauth"` (No Auth). The URL and last-used mode are remembered for next launch. **The bearer token is never saved to disk** — it is re-entered each session (or omitted entirely in No Auth mode).
+`Mode` is `"token"` (Bearer Token) or `"noauth"` (No Auth).
+
+**The bearer token is persisted encrypted at rest** via Windows [DPAPI](https://learn.microsoft.com/dotnet/standard/security/how-to-use-data-protection) (`ProtectedData.Protect` with `DataProtectionScope.CurrentUser`). What this means in practice:
+
+- On next launch the token field is pre-populated so you don't have to paste it every session.
+- The value on disk is a base64-encoded encrypted blob, not the plaintext token. Casual inspection of `connection.json` reveals nothing.
+- Decryption only succeeds for **the same Windows user on the same machine**. Copying `connection.json` to another PC, or opening it under a different user account, yields an empty token — you'll be asked to paste it again.
+- If the token needs to change (rotation, moving to a different server), just paste the new value and click **Connect**. The persisted blob is refreshed on every successful Connect, so the new value replaces the old one.
+
+To wipe the persisted token, delete `connection.json` (or just the `TokenProtected` line) and re-launch the app.
 
 ---
 
@@ -216,7 +229,7 @@ The dialog persists three settings to `connection.json` next to the .exe so the 
 |---|---|---|
 | `Url` | yes | Pre-fills the Server URL field |
 | `Mode` | yes | Selects which radio button is active when the dialog opens (`"token"` or `"noauth"`) |
-| Bearer Token | **never** | Re-entered each session |
+| `TokenProtected` | yes, **DPAPI-encrypted per user/machine** | Pre-fills the Bearer Token field. Base64 of a `ProtectedData.Protect(..., DataProtectionScope.CurrentUser)` blob — never plaintext on disk. Refreshed on every successful Connect. |
 
 If `connection.json` is missing or corrupt, defaults (`http://localhost:8885`, Bearer Token mode) are used.
 
@@ -373,3 +386,4 @@ This app picked up a few hardenings during development:
 - **v10** — Export PDF button in toolbar (renders the current chart view to a PDF via `PrintDocument` + *Microsoft Print to PDF*, landscape Letter, aspect-preserved)
 - **v11** — Switched data source from HighByte proprietary REST pipelines to the vendor-neutral [i3x industrial API](https://github.com/cesmii/i3X). Locations are now discovered dynamically as children of the `Weather` root object; per-location forecasts come from `POST /i3x/v1/objects/value`. Dialog and status labels updated. `HighbyteClient` renamed `I3xClient`.
 - **v12** — Removed the Username & Password mode from the Connect dialog; replaced with a **No Auth** mode that omits the `Authorization` header entirely for open i3x servers. `connection.json` schema simplified (`Mode` string replaces `Username` + `UseToken`).
+- **v13** — Bearer token is now persisted across launches, encrypted at rest with Windows DPAPI (`ProtectedData` / `DataProtectionScope.CurrentUser`). The token field pre-populates on next launch; the persisted blob is refreshed on every successful Connect so a changed value updates automatically.
