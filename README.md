@@ -2,6 +2,8 @@
 
 A standalone Windows desktop app that plots hourly weather forecasts (temperature + wind speed) for multiple locations on a single interactive chart. Data is sourced from a [HighByte](https://www.highbyte.com/) Intelligence Hub via the [i3x industrial data API](https://github.com/cesmii/i3X), with the National Weather Service's hourly forecast underneath.
 
+> **HighByte configuration:** the Intelligence Hub deployment that backs this app (connections, pipelines, and the `Weather` namespace exposed over i3x) is published at [github.com/glenwirth/HighBytePublic/blob/main/intelligencehub-deployment_WeatherPlot.json](https://github.com/glenwirth/HighBytePublic/blob/main/intelligencehub-deployment_WeatherPlot.json). Load it into an Intelligence Hub to reproduce the server side.
+
 ![overview](screenshot.png)
 
 ---
